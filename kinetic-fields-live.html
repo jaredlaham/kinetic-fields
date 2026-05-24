@@ -436,6 +436,8 @@ body::after { content: ''; position: fixed; inset: 0; pointer-events: none; z-in
     <div class="vd"></div>
     <button class="t"    id="btn-liquidmetal" onclick="setMode('liquidmetal')">◒ LIQUID METAL</button>
     <div class="vd"></div>
+    <button class="t"    id="btn-lightning" onclick="setMode('lightning')">ϟ LIGHTNING</button>
+    <div class="vd"></div>
     <button class="t"    id="btn-orb"    onclick="setMode('orb')">⬡ ORB BLOB</button>
     <div class="vd"></div>
     <button class="t"    id="btn-metal"  onclick="setMode('metal')">⬢ METAL SPHERE</button>
@@ -589,7 +591,7 @@ var autoVJActive = false;
 var autoVJTimer = null;
 var autoVJIndex = 0;
 var autoVJIntervalMs = 12000;
-var autoVJModes = ['ripple','liquidmetal','bio','orb','metal','osc','fft','lissajous','retrowave','star','iris','pulse','tiedye'];
+var autoVJModes = ['ripple','liquidmetal','lightning','bio','orb','metal','osc','fft','lissajous','retrowave','star','iris','pulse','tiedye'];
 // Metal sphere params
 var M_NOISE   = 1.16;
 var M_DISP    = 0.45;
@@ -611,7 +613,7 @@ var micGainNode = null;
 function setMode(m) {
   MODE = m;
 
-  var twoDModes = ['osc','fft','lissajous','retrowave','star','pulse','liquidmetal'];
+  var twoDModes = ['osc','fft','lissajous','retrowave','star','pulse','liquidmetal','lightning'];
   var is2D = twoDModes.indexOf(m) !== -1;
 
   var modeButtonIds = {
@@ -620,6 +622,7 @@ function setMode(m) {
     metal: 'btn-metal',
     ripple: 'btn-ripple',
     liquidmetal: 'btn-liquidmetal',
+    lightning: 'btn-lightning',
     osc: 'btn-osc',
     fft: 'btn-fft',
     lissajous: 'btn-lissajous',
@@ -1454,175 +1457,269 @@ function drawExtraVisualizer(t, spd, bloom){
   }
   else 
   if(MODE==='liquidmetal'){
-    // Liquid Metal mode — chrome-like viscous shader inspired by Paper Liquid Metal.
-    // Audio controls ripple depth, blob scale, and reflective shimmer.
+    // Liquid Metal — smooth mercury/metaball field.
+    // Inspired by WebGL liquid-logo / MetalFlow style: flowing edges, chrome gradients, soft merging blobs.
     ctx.globalCompositeOperation='source-over';
-    ctx.fillStyle='rgba(0,0,0,0.22)';
+    ctx.fillStyle='rgba(0,0,0,0.20)';
+    ctx.fillRect(0,0,w,h);
+
+    var minDim = Math.min(w,h);
+    var time = t * (0.16 + spd * 0.22 + bass * 0.28);
+    var step = IS_MOBILE ? 9 : 7;
+    var cols = Math.ceil(w / step);
+    var rows = Math.ceil(h / step);
+
+    var blobCount = IS_MOBILE ? 7 : 10;
+    var blobs = [];
+
+    for(var bi=0; bi<blobCount; bi++){
+      var phase = bi * 1.618;
+      var orbit = minDim * (0.10 + (bi % 4) * 0.045 + bass * 0.035);
+      var bx = cx +
+        Math.sin(time * (0.75 + bi * 0.035) + phase) * orbit +
+        Math.sin(time * 0.33 + phase * 2.1) * minDim * 0.055;
+      var by = cy +
+        Math.cos(time * (0.58 + bi * 0.028) + phase * 1.4) * orbit * 0.82 +
+        Math.cos(time * 0.41 + phase * 1.7) * minDim * 0.04;
+
+      var br = minDim * (0.13 + 0.025 * Math.sin(time + phase) + bass * 0.055 + mid * 0.025);
+      blobs.push({x:bx,y:by,r:br});
+    }
+
+    function clamp01(v){ return Math.max(0, Math.min(1, v)); }
+
+    function chrome(v, alpha){
+      v = clamp01(v);
+      var r, g, b;
+
+      // High contrast mercury ramp with blue edge tint
+      if(v < 0.22){
+        var a = v / 0.22;
+        r = 2 + a * 20;
+        g = 3 + a * 23;
+        b = 5 + a * 32;
+      } else if(v < 0.52){
+        var a2 = (v - 0.22) / 0.30;
+        r = 22 + a2 * 88;
+        g = 26 + a2 * 98;
+        b = 37 + a2 * 122;
+      } else if(v < 0.82){
+        var a3 = (v - 0.52) / 0.30;
+        r = 110 + a3 * 108;
+        g = 124 + a3 * 110;
+        b = 159 + a3 * 82;
+      } else {
+        var a4 = (v - 0.82) / 0.18;
+        r = 218 + a4 * 37;
+        g = 234 + a4 * 21;
+        b = 241 + a4 * 14;
+      }
+
+      // Cold reflective shimmer
+      b += high * 18;
+      g += mid * 10;
+
+      return 'rgba(' + Math.round(Math.min(255,r)) + ',' + Math.round(Math.min(255,g)) + ',' + Math.round(Math.min(255,b)) + ',' + alpha + ')';
+    }
+
+    ctx.globalCompositeOperation='lighter';
+
+    // Render as contiguous soft square/rect samples so it reads as a smooth shader field, not scattered dots.
+    for(var y0=0; y0<rows; y0++){
+      for(var x0=0; x0<cols; x0++){
+        var px = x0 * step;
+        var py = y0 * step;
+
+        var field = 0.0;
+        var flow = Math.sin(px * 0.008 + time * 1.7) * 0.09 +
+                   Math.cos(py * 0.009 - time * 1.2) * 0.09;
+
+        for(var k=0; k<blobs.length; k++){
+          var b0 = blobs[k];
+          var dx = px - b0.x;
+          var dy = py - b0.y;
+          var d2 = dx*dx + dy*dy + 1.0;
+          field += (b0.r * b0.r) / d2;
+        }
+
+        field = field * 0.125 + flow + bass * 0.18 + mid * 0.06;
+
+        // threshold creates liquid edges; spec creates chrome highlight
+        var edge = clamp01((field - 0.58) * 2.6);
+        var rim = clamp01(1.0 - Math.abs(field - 0.82) * 5.0);
+        var spec = Math.pow(clamp01(Math.sin(field * 9.5 + time * 2.2) * 0.5 + 0.5), 10.0);
+
+        var intensity = clamp01(edge * 0.55 + rim * 0.38 + spec * (0.55 + high * 0.6));
+        var alpha = edge * 0.30 + rim * 0.22 + spec * 0.40;
+
+        if(alpha > 0.025){
+          ctx.fillStyle = chrome(intensity, alpha);
+          ctx.fillRect(px - step, py - step, step * 2.35, step * 2.35);
+        }
+      }
+    }
+
+    // Sweeping chrome specular ribbons
+    ctx.globalCompositeOperation='screen';
+    for(var band=0; band<6; band++){
+      var y = cy + (band - 2.5) * minDim * 0.105 + Math.sin(time * 0.85 + band * 1.7) * minDim * 0.035;
+      var grad = ctx.createLinearGradient(cx - minDim * 0.55, y, cx + minDim * 0.55, y);
+      grad.addColorStop(0, 'rgba(0,0,0,0)');
+      grad.addColorStop(0.36, 'rgba(80,110,150,' + (0.08 + high * 0.05) + ')');
+      grad.addColorStop(0.50, 'rgba(255,255,255,' + (0.20 + bass * 0.14 + high * 0.12) + ')');
+      grad.addColorStop(0.64, 'rgba(80,120,170,' + (0.08 + mid * 0.05) + ')');
+      grad.addColorStop(1, 'rgba(0,0,0,0)');
+
+      ctx.strokeStyle = grad;
+      ctx.lineWidth = minDim * (0.018 + bass * 0.010);
+      ctx.beginPath();
+
+      for(var i=0; i<=90; i++){
+        var p = i / 90;
+        var x = cx - minDim * 0.58 + p * minDim * 1.16;
+        var yy = y +
+          Math.sin(p * Math.PI * 3.8 + time * 1.2 + band) * minDim * 0.021 +
+          Math.sin(p * Math.PI * 8.0 - time * 0.7) * minDim * 0.008;
+
+        if(i===0) ctx.moveTo(x,yy);
+        else ctx.lineTo(x,yy);
+      }
+      ctx.stroke();
+    }
+
+    // Subtle black contours give mercury volume
+    ctx.globalCompositeOperation='source-over';
+    ctx.strokeStyle='rgba(0,0,0,0.22)';
+    ctx.lineWidth=Math.max(1, 1.1 * vizDpr);
+
+    for(var ci=0; ci<blobs.length; ci++){
+      var bb=blobs[ci];
+      ctx.beginPath();
+      ctx.ellipse(bb.x, bb.y, bb.r * (1.2 + bass*0.2), bb.r * (0.78 + mid*0.15), time*0.25 + ci, 0, Math.PI*2);
+      ctx.stroke();
+    }
+  }
+
+if(MODE==='lightning'){
+    // Lightning — Shadertoy-inspired branching electric bolts.
+    // Audio drives branch count, jitter, flash, and bolt thickness.
+    ctx.globalCompositeOperation='source-over';
+    ctx.fillStyle='rgba(0,0,0,' + (0.22 - Math.min(0.12, bass * 0.08)) + ')';
     ctx.fillRect(0,0,w,h);
 
     ctx.globalCompositeOperation='lighter';
 
-    var time = t * (0.18 + spd * 0.34 + bass * 0.38);
     var minDim = Math.min(w,h);
-    var quality = IS_MOBILE ? 72 : 118;
-    var cell = Math.max(5, Math.floor(minDim / quality));
-    var cols = Math.ceil(w / cell) + 2;
-    var rows = Math.ceil(h / cell) + 2;
+    var time = t * (0.9 + spd * 1.4 + high * 1.8);
+    var flash = Math.pow(Math.max(0, bass), 1.7);
+    var branchCount = Math.floor(3 + mid * 8 + high * 5);
+    var segs = IS_MOBILE ? 46 : 72;
 
-    var scale = 1.15 + bass * 0.42 + mid * 0.18;
-    var flow = 0.55 + high * 0.8;
-    var cxm = cx + Math.sin(time * 0.7) * minDim * 0.045;
-    var cym = cy + Math.cos(time * 0.52) * minDim * 0.035;
-
-    function smoothstep(edge0, edge1, x){
-        var tt = Math.max(0, Math.min(1, (x - edge0) / (edge1 - edge0)));
-        return tt * tt * (3 - 2 * tt);
+    function rand(n){
+      return Math.sin(n * 127.1 + Math.sin(n * 311.7) * 437.3) * 43758.5453123 % 1;
     }
 
-    function chromeColor(v, alpha){
-        // black → gunmetal → silver → white hot specular
-        v = Math.max(0, Math.min(1, v));
-        var r, g, b;
+    function noise(n){
+      var i = Math.floor(n);
+      var f = n - i;
+      var a = rand(i);
+      var b = rand(i + 1.0);
+      f = f * f * (3.0 - 2.0 * f);
+      return a + (b - a) * f;
+    }
 
-        if(v < 0.35){
-            var k = v / 0.35;
-            r = 5 + k * 38;
-            g = 6 + k * 42;
-            b = 8 + k * 52;
-        } else if(v < 0.72){
-            var k2 = (v - 0.35) / 0.37;
-            r = 43 + k2 * 112;
-            g = 48 + k2 * 118;
-            b = 60 + k2 * 132;
-        } else {
-            var k3 = (v - 0.72) / 0.28;
-            r = 155 + k3 * 100;
-            g = 166 + k3 * 89;
-            b = 192 + k3 * 63;
+    function drawBolt(x1,y1,x2,y2,seed,thick,alpha,branches){
+      var points = [];
+      var dx = x2 - x1;
+      var dy = y2 - y1;
+      var len = Math.sqrt(dx*dx + dy*dy) || 1;
+      var nx = -dy / len;
+      var ny = dx / len;
+
+      for(var i=0;i<=segs;i++){
+        var p = i / segs;
+        var envelope = Math.sin(p * Math.PI);
+        var jitter =
+          (noise(seed + i * 0.37 + time * 7.0) - 0.5) *
+          minDim * (0.12 + high * 0.08) * envelope;
+
+        var drift =
+          Math.sin(p * Math.PI * 5.0 + time * 4.0 + seed) *
+          minDim * 0.018 * envelope;
+
+        points.push({
+          x: x1 + dx * p + nx * (jitter + drift),
+          y: y1 + dy * p + ny * (jitter + drift)
+        });
+      }
+
+      // outer blue glow
+      ctx.lineCap='round';
+      ctx.lineJoin='round';
+      ctx.shadowBlur = (28 + flash * 55) * vizDpr;
+      ctx.shadowColor = 'rgba(80,170,255,0.9)';
+      ctx.strokeStyle = 'rgba(35,115,255,' + (0.26 * alpha) + ')';
+      ctx.lineWidth = thick * 6.0 * vizDpr;
+      ctx.beginPath();
+      points.forEach(function(pt,idx){ if(idx===0) ctx.moveTo(pt.x,pt.y); else ctx.lineTo(pt.x,pt.y); });
+      ctx.stroke();
+
+      // mid cyan body
+      ctx.shadowBlur = (14 + flash * 32) * vizDpr;
+      ctx.shadowColor = 'rgba(120,225,255,0.95)';
+      ctx.strokeStyle = 'rgba(120,220,255,' + (0.58 * alpha) + ')';
+      ctx.lineWidth = thick * 2.6 * vizDpr;
+      ctx.beginPath();
+      points.forEach(function(pt,idx){ if(idx===0) ctx.moveTo(pt.x,pt.y); else ctx.lineTo(pt.x,pt.y); });
+      ctx.stroke();
+
+      // hot white core
+      ctx.shadowBlur = (4 + flash * 18) * vizDpr;
+      ctx.shadowColor = 'rgba(255,255,255,1)';
+      ctx.strokeStyle = 'rgba(255,255,255,' + (0.84 * alpha) + ')';
+      ctx.lineWidth = Math.max(1, thick * 0.85 * vizDpr);
+      ctx.beginPath();
+      points.forEach(function(pt,idx){ if(idx===0) ctx.moveTo(pt.x,pt.y); else ctx.lineTo(pt.x,pt.y); });
+      ctx.stroke();
+
+      // branches
+      if(branches){
+        for(var b=0;b<branchCount;b++){
+          var idx = 8 + Math.floor(rand(seed + b * 9.17 + time) * (points.length - 16));
+          var base = points[Math.max(0, Math.min(points.length-1, idx))];
+          var side = rand(seed + b * 4.4) > 0.5 ? 1 : -1;
+          var blen = minDim * (0.10 + rand(seed + b * 2.1) * 0.22) * (0.55 + high);
+          var ba = Math.atan2(dy,dx) + side * (0.65 + rand(seed+b)*0.75);
+
+          drawBolt(
+            base.x,
+            base.y,
+            base.x + Math.cos(ba) * blen,
+            base.y + Math.sin(ba) * blen,
+            seed + b * 13.37,
+            thick * 0.36,
+            alpha * 0.48,
+            false
+          );
         }
-
-        // subtle cold blue/cyan reflective tint
-        b += 20 * high;
-        g += 10 * mid;
-
-        return 'rgba(' + Math.round(Math.min(255,r)) + ',' + Math.round(Math.min(255,g)) + ',' + Math.round(Math.min(255,b)) + ',' + alpha + ')';
+      }
     }
 
-    // Large soft liquid mass underneath the highlights
-    var bg = ctx.createRadialGradient(cxm, cym, minDim * 0.03, cxm, cym, minDim * (0.42 + bass * 0.12));
-    bg.addColorStop(0.0, 'rgba(230,240,255,' + (0.20 + bass * 0.18) + ')');
-    bg.addColorStop(0.28, 'rgba(95,115,145,' + (0.16 + mid * 0.12) + ')');
-    bg.addColorStop(0.68, 'rgba(20,24,34,0.18)');
-    bg.addColorStop(1.0, 'rgba(0,0,0,0)');
-    ctx.fillStyle = bg;
-    ctx.beginPath();
-    ctx.arc(cxm, cym, minDim * (0.62 + bass * 0.13), 0, Math.PI * 2);
-    ctx.fill();
+    var startX = w * (0.18 + 0.12 * Math.sin(time * 0.38));
+    var startY = h * (0.15 + 0.10 * Math.cos(time * 0.31));
+    var endX = w * (0.82 + 0.10 * Math.sin(time * 0.27 + 2.0));
+    var endY = h * (0.76 + 0.12 * Math.cos(time * 0.34 + 1.2));
 
-    // Pixelated shader-like field, but rendered as overlapping soft blobs instead of dot grid.
-    for(var yy=-1; yy<rows; yy++){
-        for(var xx=-1; xx<cols; xx++){
-            var px = xx * cell;
-            var py = yy * cell;
+    drawBolt(startX,startY,endX,endY,Math.floor(time*2.0),1.4 + bass * 5.0,0.72 + flash * 0.55,true);
 
-            var ux = (px - cxm) / minDim;
-            var uy = (py - cym) / minDim;
-
-            ux *= scale;
-            uy *= scale;
-
-            var d = Math.sqrt(ux*ux + uy*uy);
-            var a = Math.atan2(uy, ux);
-
-            // Layered viscous wave field — slower, thicker, more metallic.
-            var n1 = Math.sin((ux * 7.5 + time * 1.55) + Math.sin(uy * 5.5 - time * 0.75) * 1.4);
-            var n2 = Math.sin((uy * 8.2 - time * 1.15) + Math.cos(ux * 4.6 + time * 0.95) * 1.6);
-            var n3 = Math.sin(d * 18.0 - time * 2.1 + Math.sin(a * 3.0 + time) * 0.9);
-            var n4 = Math.cos(a * 4.0 + d * 11.0 - time * 1.35);
-
-            var field = n1 * 0.34 + n2 * 0.32 + n3 * 0.24 + n4 * 0.10;
-
-            // Audio increases the surface tension/ripple depth.
-            field += bass * 0.65 + mid * 0.22 + high * 0.18;
-
-            // Create liquid-metal islands with bright specular rims.
-            var mass = smoothstep(0.05, 0.72, field + 0.38 - d * 0.85);
-            var rim = smoothstep(0.42, 0.64, field + 0.35 - d * 0.65) -
-                      smoothstep(0.66, 0.86, field + 0.35 - d * 0.65);
-            var spec = Math.pow(Math.max(0, Math.sin(field * 4.8 + time * 1.2)), 8.0);
-
-            var light = mass * 0.48 + rim * 0.42 + spec * (0.65 + high * 0.8);
-            var alpha = mass * 0.18 + rim * 0.20 + spec * 0.36;
-
-            if(alpha > 0.015){
-                var stretch = 1.0 + rim * 1.6 + bass * 0.6;
-                var angle = a + time * 0.16 + field * 0.4;
-
-                ctx.fillStyle = chromeColor(light, alpha);
-
-                ctx.beginPath();
-                ctx.ellipse(
-                    px,
-                    py,
-                    cell * (1.45 + stretch),
-                    cell * (1.05 + spec * 1.8 + mid * 0.45),
-                    angle,
-                    0,
-                    Math.PI * 2
-                );
-                ctx.fill();
-            }
-        }
+    // occasional screen flash
+    if(flash > 0.28){
+      ctx.globalCompositeOperation='screen';
+      ctx.fillStyle='rgba(120,190,255,' + Math.min(0.18, flash * 0.12) + ')';
+      ctx.fillRect(0,0,w,h);
     }
 
-    // Broad moving specular ribbons, the part that makes it read as polished metal.
-    ctx.globalCompositeOperation='screen';
-    for(var band=0; band<7; band++){
-        var offset = (band - 3) * minDim * 0.105 + Math.sin(time * 0.8 + band) * minDim * 0.04;
-        var y = cym + offset + Math.sin(time * 1.2 + band * 1.9) * minDim * 0.035;
-
-        var grad = ctx.createLinearGradient(cxm - minDim * 0.55, y - minDim * 0.08, cxm + minDim * 0.55, y + minDim * 0.08);
-        grad.addColorStop(0.0, 'rgba(0,0,0,0)');
-        grad.addColorStop(0.35, 'rgba(125,150,185,' + (0.05 + high * 0.04) + ')');
-        grad.addColorStop(0.50, 'rgba(255,255,255,' + (0.14 + bass * 0.13 + high * 0.12) + ')');
-        grad.addColorStop(0.65, 'rgba(80,120,170,' + (0.06 + mid * 0.04) + ')');
-        grad.addColorStop(1.0, 'rgba(0,0,0,0)');
-
-        ctx.strokeStyle = grad;
-        ctx.lineWidth = minDim * (0.018 + bass * 0.012);
-        ctx.beginPath();
-
-        for(var i=0;i<=80;i++){
-            var p = i / 80;
-            var x = cxm - minDim * 0.56 + p * minDim * 1.12;
-            var yy2 = y +
-                Math.sin(p * Math.PI * 4 + time * flow + band) * minDim * 0.022 +
-                Math.sin(p * Math.PI * 9 - time * 0.7) * minDim * 0.009;
-
-            if(i===0) ctx.moveTo(x, yy2);
-            else ctx.lineTo(x, yy2);
-        }
-        ctx.stroke();
-    }
-
-    // Dark contour lines for depth.
-    ctx.globalCompositeOperation='source-over';
-    ctx.strokeStyle = 'rgba(0,0,0,0.18)';
-    ctx.lineWidth = Math.max(1, 1.2 * vizDpr);
-    for(var ring=0; ring<5; ring++){
-        ctx.beginPath();
-        var rr = minDim * (0.18 + ring * 0.085 + bass * 0.025);
-        for(var j=0;j<=160;j++){
-            var aa = j / 160 * Math.PI * 2;
-            var wob = Math.sin(aa * 5 + time * 1.1 + ring) * minDim * 0.018;
-            var x2 = cxm + Math.cos(aa) * (rr + wob);
-            var y2 = cym + Math.sin(aa) * (rr * 0.72 + wob);
-            if(j===0) ctx.moveTo(x2,y2);
-            else ctx.lineTo(x2,y2);
-        }
-        ctx.closePath();
-        ctx.stroke();
-    }
+    ctx.shadowBlur = 0;
   }
 
 if(MODE==='pulse'){
@@ -2661,7 +2758,7 @@ document.addEventListener('keydown',function(e){
   if(key===' '&&MODE==='ripple'){e.preventDefault();fluid.triggerSplat(1.0);}
 
   // Number keys 1-0 + numpad switch modes
-  var numModes=['ripple','liquidmetal','bio','orb','metal','osc','fft','lissajous','retrowave','star','iris','pulse','tiedye'];
+  var numModes=['ripple','liquidmetal','lightning','bio','orb','metal','osc','fft','lissajous','retrowave','star','iris','pulse','tiedye'];
   var numKey = null;
   if(e.key>='1'&&e.key<='9') numKey = parseInt(e.key)-1;
   if(e.key==='0') numKey = 9;
@@ -2875,7 +2972,7 @@ function animate(){
     fluid.tick(t, sBass, sMid, sHigh, beatVal);
   }
 
-  if(['osc','fft','dots','lissajous','retrowave','star','pulse','liquidmetal'].indexOf(MODE)!==-1){
+  if(['osc','fft','dots','lissajous','retrowave','star','pulse','liquidmetal','lightning'].indexOf(MODE)!==-1){
     drawExtraVisualizer(t, spd, bloom);
   }
 
@@ -3601,7 +3698,7 @@ var tieDyeSim = (function(){
   };
 
   window.cycleMode = function(direction){
-    var modes = window.autoVJModes || ['ripple','liquidmetal','bio','orb','metal','osc','fft','lissajous','retrowave','star','iris','pulse','tiedye'];
+    var modes = window.autoVJModes || ['ripple','liquidmetal','lightning','bio','orb','metal','osc','fft','lissajous','retrowave','star','iris','pulse','tiedye'];
     var currentIndex = modes.indexOf(window.MODE);
 
     if (currentIndex < 0) currentIndex = 0;

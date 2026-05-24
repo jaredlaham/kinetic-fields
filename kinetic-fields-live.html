@@ -1628,160 +1628,181 @@ function drawExtraVisualizer(t, spd, bloom){
   }
   else 
   if(MODE==='liquidmetal'){
-    // Liquid Mercury FAST — premium, smooth, heavy, performance-safe.
-    // No pixel-grid field, no physics sim, no fullscreen grain loop.
+    // Liquid Metal Surface — performance-safe chrome/metaball field.
+    // Goal: one continuous premium mercury-like surface, not separate orbiting blobs.
+    // Strategy: render a low-res scalar field to an offscreen canvas, upscale smoothly,
+    // then add a few cheap specular highlights + restrained grain.
+
     ctx.globalCompositeOperation='source-over';
-    ctx.fillStyle='rgba(0,0,0,0.34)';
+    ctx.fillStyle='rgba(0,0,0,0.38)';
     ctx.fillRect(0,0,w,h);
 
     var minDim = Math.min(w,h);
-    var time = t * (0.075 + spd * 0.12 + bass * 0.08);
-    var blobCount = IS_MOBILE ? 6 : 9;
+    var time = t * (0.055 + spd * 0.085 + bass * 0.055);
 
-    function mercTint(v, alpha, silverMix){
+    // Lazily create a tiny offscreen buffer. This is the performance win.
+    if(!window.__lmBuf){
+      window.__lmBuf = document.createElement('canvas');
+      window.__lmCtx = window.__lmBuf.getContext('2d', { willReadFrequently: true });
+      window.__lmImg = null;
+    }
+    if(!window.__lmCtx) return;
+
+    var scale = IS_MOBILE ? 0.115 : 0.145;
+    var bw = Math.max(120, Math.floor(w * scale));
+    var bh = Math.max(80, Math.floor(h * scale));
+
+    if(window.__lmBuf.width !== bw || window.__lmBuf.height !== bh){
+      window.__lmBuf.width = bw;
+      window.__lmBuf.height = bh;
+      window.__lmImg = null;
+    }
+
+    var bctx = window.__lmCtx;
+    if(!window.__lmImg || window.__lmImg.width !== bw || window.__lmImg.height !== bh){
+      window.__lmImg = bctx.createImageData(bw, bh);
+    }
+    var img = window.__lmImg;
+    var data = img.data;
+
+    var cxB = bw * 0.5;
+    var cyB = bh * 0.5;
+    var minB = Math.min(bw,bh);
+
+    // Cohesive blobs positioned close enough to merge into one liquid mass.
+    var blobCount = IS_MOBILE ? 6 : 8;
+    var blobs = [];
+
+    for(var bi=0; bi<blobCount; bi++){
+      var phase = bi * 1.61803398875;
+      var orbit = minB * (0.055 + (bi % 4) * 0.020);
+
+      blobs.push({
+        x: cxB +
+          Math.sin(time * (0.62 + bi * 0.020) + phase) * orbit +
+          Math.sin(time * 0.21 + phase * 2.0) * minB * 0.030,
+        y: cyB +
+          Math.cos(time * (0.48 + bi * 0.016) + phase * 1.25) * orbit * 0.72 +
+          Math.cos(time * 0.25 + phase * 1.8) * minB * 0.024,
+        r: minB * (0.175 + 0.018 * Math.sin(time * 0.7 + phase) + bass * 0.030)
+      });
+    }
+
+    function clamp(v,a,b){ return Math.max(a, Math.min(b, v)); }
+
+    function tintRGB(v, silverMix){
       var c = paletteRGB(v);
-      silverMix = silverMix === undefined ? 0.72 : silverMix;
+      silverMix = silverMix === undefined ? 0.78 : silverMix;
+      var lum = c[0]*0.299 + c[1]*0.587 + c[2]*0.114;
+      var silver = 185 + lum * 0.18;
 
-      var lum = c[0] * 0.299 + c[1] * 0.587 + c[2] * 0.114;
-      var silver = 188 + lum * 0.16;
-
-      var r = c[0] * (1.0 - silverMix) + silver * silverMix;
-      var g = c[1] * (1.0 - silverMix) + silver * silverMix;
-      var b = c[2] * (1.0 - silverMix) + (silver + 14) * silverMix;
+      var r = c[0]*(1-silverMix) + silver*silverMix;
+      var g = c[1]*(1-silverMix) + silver*silverMix;
+      var b = c[2]*(1-silverMix) + (silver+16)*silverMix;
 
       if(typeof getTextureKey === 'function' && getTextureKey() === 'vintage'){
         r = r * 0.90 + 18;
-        g = g * 0.84 + 16;
-        b = b * 0.70 + 10;
+        g = g * 0.83 + 15;
+        b = b * 0.68 + 10;
       }
 
-      return 'rgba(' +
-        Math.min(255, Math.round(r)) + ',' +
-        Math.min(255, Math.round(g)) + ',' +
-        Math.min(255, Math.round(b)) + ',' +
-        alpha + ')';
+      return [clamp(Math.round(r),0,255), clamp(Math.round(g),0,255), clamp(Math.round(b),0,255)];
     }
+
+    // Scalar-field render. Low-res enough to be fast, smooth enough when upscaled.
+    var ptr = 0;
+
+    for(var yb=0; yb<bh; yb++){
+      for(var xb=0; xb<bw; xb++){
+        var field = 0.0;
+
+        for(var k=0; k<blobs.length; k++){
+          var b = blobs[k];
+          var dx = xb - b.x;
+          var dy = yb - b.y;
+          var d2 = dx*dx + dy*dy + 1.0;
+          field += (b.r*b.r) / d2;
+        }
+
+        // Soft threshold = continuous mercury mass.
+        var edge = clamp((field - 0.72) * 1.65, 0, 1);
+        edge = edge * edge * (3.0 - 2.0 * edge);
+
+        // Approximate surface normal from center + wave. Cheap fake lighting.
+        var nx = (xb - cxB) / minB;
+        var ny = (yb - cyB) / minB;
+        var radial = Math.sqrt(nx*nx + ny*ny);
+
+        var wave =
+          Math.sin(nx * 12.0 + time * 1.8) * 0.08 +
+          Math.cos(ny * 10.0 - time * 1.4) * 0.07 +
+          Math.sin((nx + ny) * 8.0 + time * 1.2) * 0.045;
+
+        var shade = clamp(edge * (0.34 + 0.72*(1.0-radial)) + wave, 0, 1);
+
+        // Specular flash near upper-left and moving streaks inside the mass.
+        var hx = nx + 0.20 + Math.sin(time*0.55)*0.06;
+        var hy = ny - 0.22 + Math.cos(time*0.45)*0.05;
+        var spec = Math.pow(clamp(1.0 - Math.sqrt(hx*hx + hy*hy)*3.1, 0, 1), 4.0);
+
+        var ribbon =
+          Math.pow(clamp(0.5 + 0.5*Math.sin((ny*10.0 + nx*2.5) - time*2.1),0,1), 12.0) *
+          edge * 0.52;
+
+        var value = clamp(shade * 0.62 + spec * 0.76 + ribbon * 0.50, 0, 1);
+        var color = tintRGB((value + time*0.018 + radial*0.08) % 1, 0.82 - spec*0.22);
+
+        var alpha = Math.round(edge * 255);
+
+        // Darken outside; keep the object as a single surface.
+        data[ptr++] = color[0];
+        data[ptr++] = color[1];
+        data[ptr++] = color[2];
+        data[ptr++] = alpha;
+      }
+    }
+
+    bctx.putImageData(img,0,0);
 
     ctx.save();
-
-    // Dark reflective base mass.
-    var bodyGlow = ctx.createRadialGradient(
-      cx, cy, minDim * 0.04,
-      cx, cy, minDim * (0.54 + bass * 0.08)
-    );
-    bodyGlow.addColorStop(0.00, mercTint((time * 0.04 + 0.20) % 1, 0.18 + bass * 0.06, 0.86));
-    bodyGlow.addColorStop(0.34, mercTint((time * 0.04 + 0.48) % 1, 0.10 + mid * 0.04, 0.82));
-    bodyGlow.addColorStop(0.72, 'rgba(18,20,24,0.16)');
-    bodyGlow.addColorStop(1.00, 'rgba(0,0,0,0)');
-    ctx.fillStyle = bodyGlow;
-    ctx.beginPath();
-    ctx.arc(cx, cy, minDim * 0.72, 0, Math.PI * 2);
-    ctx.fill();
-
-    // Cohesive mercury blobs.
-    ctx.globalCompositeOperation='lighter';
-    ctx.filter = 'blur(' + (IS_MOBILE ? 1.2 : 1.6) + 'px)';
-
-    for(var i=0; i<blobCount; i++){
-      var phase = i * 1.61803398875;
-      var orbit = minDim * (0.10 + (i % 4) * 0.035 + bass * 0.018);
-
-      var x =
-        cx +
-        Math.sin(time * (0.58 + i * 0.018) + phase) * orbit +
-        Math.sin(time * 0.21 + phase * 2.1) * minDim * 0.040;
-
-      var y =
-        cy +
-        Math.cos(time * (0.46 + i * 0.015) + phase * 1.3) * orbit * 0.76 +
-        Math.cos(time * 0.24 + phase * 1.8) * minDim * 0.032;
-
-      var r =
-        minDim *
-        (0.150 +
-          0.012 * Math.sin(time * 0.9 + phase) +
-          bass * 0.026 +
-          mid * 0.012);
-
-      var grad = ctx.createRadialGradient(
-        x - r * 0.26,
-        y - r * 0.34,
-        r * 0.025,
-        x,
-        y,
-        r * 1.62
-      );
-
-      var tintBase = (i / blobCount + time * 0.018) % 1;
-      grad.addColorStop(0.00, 'rgba(255,255,255,' + (0.34 + high * 0.12) + ')');
-      grad.addColorStop(0.08, mercTint(tintBase + 0.10, 0.30 + bass * 0.06, 0.92));
-      grad.addColorStop(0.32, mercTint(tintBase + 0.34, 0.22, 0.78));
-      grad.addColorStop(0.62, 'rgba(45,48,56,0.18)');
-      grad.addColorStop(1.00, 'rgba(0,0,0,0)');
-
-      ctx.fillStyle = grad;
-      ctx.beginPath();
-      ctx.ellipse(
-        x,
-        y,
-        r * (1.28 + bass * 0.12),
-        r * (0.96 + mid * 0.08),
-        time * 0.18 + phase,
-        0,
-        Math.PI * 2
-      );
-      ctx.fill();
-    }
-
+    ctx.globalCompositeOperation='source-over';
+    ctx.imageSmoothingEnabled = true;
+    ctx.filter = 'blur(2.2px)';
+    ctx.drawImage(window.__lmBuf, 0, 0, bw, bh, 0, 0, w, h);
     ctx.filter = 'none';
 
-    // Cheap Fresnel-like edge highlights.
+    // Tight specular ribbons — no orbit lines, no contour ellipses.
     ctx.globalCompositeOperation='screen';
-    for(var e=0; e<4; e++){
-      var er = minDim * (0.18 + e * 0.060 + bass * 0.010);
-      ctx.strokeStyle = mercTint((time * 0.05 + e * 0.18) % 1, 0.06 + high * 0.035, 0.55);
-      ctx.lineWidth = Math.max(1, minDim * (0.0025 + bass * 0.0018));
-      ctx.beginPath();
-      ctx.ellipse(
-        cx + Math.sin(time * 0.4 + e) * minDim * 0.025,
-        cy + Math.cos(time * 0.32 + e) * minDim * 0.018,
-        er * 1.58,
-        er * 0.82,
-        -0.12 + Math.sin(time * 0.2) * 0.05,
-        0,
-        Math.PI * 2
-      );
-      ctx.stroke();
-    }
 
-    // Independent specular ribbons.
-    for(var band=0; band<5; band++){
+    for(var band=0; band<4; band++){
       var y0 =
         cy +
-        (band - 2) * minDim * 0.095 +
-        Math.sin(time * 1.15 + band * 1.9) * minDim * 0.030;
+        (band - 1.5) * minDim * 0.070 +
+        Math.sin(time * 1.35 + band * 1.7) * minDim * 0.018;
 
-      var grad2 = ctx.createLinearGradient(cx - minDim * 0.58, y0, cx + minDim * 0.58, y0);
+      var grad = ctx.createLinearGradient(
+        cx - minDim * 0.34,
+        y0,
+        cx + minDim * 0.34,
+        y0
+      );
 
-      var bp = (band / 5 + time * 0.06) % 1;
-      grad2.addColorStop(0.00, 'rgba(0,0,0,0)');
-      grad2.addColorStop(0.28, mercTint(bp + 0.12, 0.030 + high * 0.018, 0.50));
-      grad2.addColorStop(0.48, 'rgba(255,255,255,' + (0.105 + bass * 0.045 + high * 0.030) + ')');
-      grad2.addColorStop(0.56, mercTint(bp + 0.42, 0.060 + mid * 0.020, 0.58));
-      grad2.addColorStop(0.72, 'rgba(28,32,40,0.030)');
-      grad2.addColorStop(1.00, 'rgba(0,0,0,0)');
+      grad.addColorStop(0.00, 'rgba(0,0,0,0)');
+      grad.addColorStop(0.35, 'rgba(210,230,245,' + (0.035 + high*0.018) + ')');
+      grad.addColorStop(0.50, 'rgba(255,255,255,' + (0.045 + bass*0.020) + ')');
+      grad.addColorStop(0.65, 'rgba(160,185,210,' + (0.040 + mid*0.015) + ')');
+      grad.addColorStop(1.00, 'rgba(0,0,0,0)');
 
-      ctx.strokeStyle = grad2;
-      ctx.lineWidth = minDim * (0.009 + bass * 0.0035);
+      ctx.strokeStyle = grad;
+      ctx.lineWidth = minDim * (0.006 + bass * 0.002);
       ctx.beginPath();
 
-      for(var j=0; j<=38; j++){
-        var p = j / 38;
-        var x2 = cx - minDim * 0.58 + p * minDim * 1.16;
+      for(var j=0; j<=28; j++){
+        var p = j / 28;
+        var x2 = cx - minDim * 0.34 + p * minDim * 0.68;
         var y2 =
           y0 +
-          Math.sin(p * Math.PI * 3.0 + time * 1.35 + band) * minDim * 0.018 +
-          Math.sin(p * Math.PI * 7.0 - time * 0.75) * minDim * 0.004;
+          Math.sin(p * Math.PI * 2.6 + time * 1.4 + band) * minDim * 0.011;
 
         if(j===0) ctx.moveTo(x2,y2);
         else ctx.lineTo(x2,y2);
@@ -1790,43 +1811,31 @@ function drawExtraVisualizer(t, spd, bloom){
       ctx.stroke();
     }
 
-    // Tiny micro-ripples, sparse and cheap.
-    for(var ripple=0; ripple<3; ripple++){
-      ctx.strokeStyle = 'rgba(255,255,255,' + (0.018 + high * 0.010) + ')';
-      ctx.lineWidth = Math.max(1, minDim * 0.0016);
-      ctx.beginPath();
-      var yR = cy + (ripple - 1) * minDim * 0.13 + Math.sin(time * 0.8 + ripple) * minDim * 0.02;
-      for(var q=0; q<=28; q++){
-        var pp = q / 28;
-        var xR = cx - minDim * 0.40 + pp * minDim * 0.80;
-        var yyR = yR + Math.sin(pp * Math.PI * 4.0 + time * 1.8 + ripple) * minDim * 0.006;
-        if(q===0) ctx.moveTo(xR, yyR);
-        else ctx.lineTo(xR, yyR);
-      }
-      ctx.stroke();
-    }
+    // Subtle vignette keeps it premium/dark.
+    ctx.globalCompositeOperation='source-over';
+    var vig = ctx.createRadialGradient(cx, cy, minDim*0.16, cx, cy, minDim*0.62);
+    vig.addColorStop(0.00, 'rgba(0,0,0,0)');
+    vig.addColorStop(0.72, 'rgba(0,0,0,0.08)');
+    vig.addColorStop(1.00, 'rgba(0,0,0,0.36)');
+    ctx.fillStyle = vig;
+    ctx.beginPath();
+    ctx.arc(cx, cy, minDim, 0, Math.PI*2);
+    ctx.fill();
 
-    // Cheap grain: no fullscreen nested loop.
+    // Cheap analog grain: sparse points only, not a screen-wide nested loop.
     ctx.globalCompositeOperation='overlay';
-    var grains = IS_MOBILE ? 220 : 360;
-    var grainSeed = Math.floor(t * 18.0);
+    var grains = IS_MOBILE ? 180 : 280;
+    var seed = Math.floor(t * 16.0);
 
-    for(var g=0; g<grains; g++){
-      var n = Math.sin((g * 12.9898 + grainSeed * 78.233) * 0.017) * 43758.5453;
-      n = n - Math.floor(n);
+    for(var gi=0; gi<grains; gi++){
+      var rn = Math.sin((gi*12.9898 + seed*78.233)*0.017)*43758.5453;
+      rn = rn - Math.floor(rn);
+      var rn2 = Math.sin((gi*91.113 + seed*17.77)*0.013)*24634.6345;
+      rn2 = rn2 - Math.floor(rn2);
 
-      var n2 = Math.sin((g * 93.989 + grainSeed * 17.17) * 0.013) * 24634.6345;
-      n2 = n2 - Math.floor(n2);
-
-      var gx = n * w;
-      var gy = n2 * h;
-      var ga = (Math.sin(g * 1.7 + grainSeed) * 0.5 + 0.5) * 0.055;
-
-      ctx.fillStyle = g % 2 === 0
-        ? 'rgba(255,255,255,' + ga + ')'
-        : 'rgba(0,0,0,' + (ga * 0.85) + ')';
-
-      ctx.fillRect(gx, gy, IS_MOBILE ? 2 : 1.25, IS_MOBILE ? 2 : 1.25);
+      var ga = (Math.sin(gi*1.7 + seed)*0.5+0.5)*0.045;
+      ctx.fillStyle = gi % 2 === 0 ? 'rgba(255,255,255,'+ga+')' : 'rgba(0,0,0,'+(ga*0.85)+')';
+      ctx.fillRect(rn*w, rn2*h, IS_MOBILE ? 2 : 1.25, IS_MOBILE ? 2 : 1.25);
     }
 
     ctx.restore();

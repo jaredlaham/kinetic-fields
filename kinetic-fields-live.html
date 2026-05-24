@@ -1454,72 +1454,175 @@ function drawExtraVisualizer(t, spd, bloom){
   }
   else 
   if(MODE==='liquidmetal'){
-    // Liquid Metal mode — adapted from the earlier standalone shader.
-    // Uses layered sine fields to create fluid metallic bands.
+    // Liquid Metal mode — chrome-like viscous shader inspired by Paper Liquid Metal.
+    // Audio controls ripple depth, blob scale, and reflective shimmer.
     ctx.globalCompositeOperation='source-over';
-    ctx.fillStyle='rgba(0,0,0,0.18)';
+    ctx.fillStyle='rgba(0,0,0,0.22)';
     ctx.fillRect(0,0,w,h);
 
     ctx.globalCompositeOperation='lighter';
 
-    var time = t * (0.35 + spd * 1.25 + bass * 1.65);
-    var grid = IS_MOBILE ? 62 : 94;
-    var cellW = w / grid;
-    var cellH = h / grid;
-    var aspect = w / h;
+    var time = t * (0.18 + spd * 0.34 + bass * 0.38);
+    var minDim = Math.min(w,h);
+    var quality = IS_MOBILE ? 72 : 118;
+    var cell = Math.max(5, Math.floor(minDim / quality));
+    var cols = Math.ceil(w / cell) + 2;
+    var rows = Math.ceil(h / cell) + 2;
 
-    function lmPalette(q, alpha){
-      q = Math.sin(q);
-      var cool = 110 + 70 * Math.sin(q * 2.3 + time * 0.7);
-      var warm = 170 + 65 * Math.cos(q * 1.7 - time * 0.45);
-      var v = 190 + 55 * Math.sin(q * 3.1 + bass * 2.0);
-      var r = Math.max(0, Math.min(255, cool + bass * 40 + high * 20));
-      var g = Math.max(0, Math.min(255, warm + mid * 35));
-      var b = Math.max(0, Math.min(255, v + high * 45));
-      return 'rgba(' + Math.round(r) + ',' + Math.round(g) + ',' + Math.round(b) + ',' + alpha + ')';
+    var scale = 1.15 + bass * 0.42 + mid * 0.18;
+    var flow = 0.55 + high * 0.8;
+    var cxm = cx + Math.sin(time * 0.7) * minDim * 0.045;
+    var cym = cy + Math.cos(time * 0.52) * minDim * 0.035;
+
+    function smoothstep(edge0, edge1, x){
+        var tt = Math.max(0, Math.min(1, (x - edge0) / (edge1 - edge0)));
+        return tt * tt * (3 - 2 * tt);
     }
 
-    for(var yy=0; yy<grid; yy++){
-      for(var xx=0; xx<grid; xx++){
-        var uvx = xx / grid - 0.5;
-        var uvy = yy / grid - 0.5;
-        uvx *= aspect;
+    function chromeColor(v, alpha){
+        // black → gunmetal → silver → white hot specular
+        v = Math.max(0, Math.min(1, v));
+        var r, g, b;
 
-        var dist = Math.sqrt(uvx*uvx + uvy*uvy);
-        var angle = Math.atan2(uvy, uvx);
+        if(v < 0.35){
+            var k = v / 0.35;
+            r = 5 + k * 38;
+            g = 6 + k * 42;
+            b = 8 + k * 52;
+        } else if(v < 0.72){
+            var k2 = (v - 0.35) / 0.37;
+            r = 43 + k2 * 112;
+            g = 48 + k2 * 118;
+            b = 60 + k2 * 132;
+        } else {
+            var k3 = (v - 0.72) / 0.28;
+            r = 155 + k3 * 100;
+            g = 166 + k3 * 89;
+            b = 192 + k3 * 63;
+        }
 
-        var wave1 = Math.sin(uvx * 8.0 + time * 5.0);
-        var wave2 = Math.sin(uvy * 8.0 - time * 4.0);
-        var wave3 = Math.sin(dist * 18.0 - time * 8.0);
-        var wave4 = Math.sin(angle * 5.0 + dist * 12.0 + time * 2.5);
+        // subtle cold blue/cyan reflective tint
+        b += 20 * high;
+        g += 10 * mid;
 
-        var audioReact = bass * 3.0 + mid * 1.8 + high * 1.2;
-        var pattern = wave1 + wave2 + wave3 + wave4 * 0.55 + audioReact;
-
-        var shine = Math.pow(Math.max(0, Math.sin(pattern + time)), 3.0);
-        var alpha = 0.10 + shine * 0.34 + bass * 0.08;
-
-        ctx.fillStyle = lmPalette(pattern, alpha);
-
-        var sizePulse = 1.0 + shine * 1.8 + bass * 1.2;
-        var rx = cellW * sizePulse * 1.35;
-        var ry = cellH * (0.8 + shine * 1.1 + mid * 0.8);
-
-        ctx.beginPath();
-        ctx.ellipse(xx * cellW, yy * cellH, rx, ry, angle + time * 0.15, 0, Math.PI * 2);
-        ctx.fill();
-      }
+        return 'rgba(' + Math.round(Math.min(255,r)) + ',' + Math.round(Math.min(255,g)) + ',' + Math.round(Math.min(255,b)) + ',' + alpha + ')';
     }
 
-    // central reflective swell
-    var radial = ctx.createRadialGradient(cx, cy, 0, cx, cy, Math.min(w,h) * (0.38 + bass * 0.18));
-    radial.addColorStop(0, 'rgba(255,255,255,' + (0.16 + bass * 0.22) + ')');
-    radial.addColorStop(0.35, 'rgba(160,210,255,' + (0.08 + mid * 0.16) + ')');
-    radial.addColorStop(1, 'rgba(0,0,0,0)');
-    ctx.fillStyle = radial;
+    // Large soft liquid mass underneath the highlights
+    var bg = ctx.createRadialGradient(cxm, cym, minDim * 0.03, cxm, cym, minDim * (0.42 + bass * 0.12));
+    bg.addColorStop(0.0, 'rgba(230,240,255,' + (0.20 + bass * 0.18) + ')');
+    bg.addColorStop(0.28, 'rgba(95,115,145,' + (0.16 + mid * 0.12) + ')');
+    bg.addColorStop(0.68, 'rgba(20,24,34,0.18)');
+    bg.addColorStop(1.0, 'rgba(0,0,0,0)');
+    ctx.fillStyle = bg;
     ctx.beginPath();
-    ctx.arc(cx, cy, Math.min(w,h) * (0.6 + bass * 0.15), 0, Math.PI * 2);
+    ctx.arc(cxm, cym, minDim * (0.62 + bass * 0.13), 0, Math.PI * 2);
     ctx.fill();
+
+    // Pixelated shader-like field, but rendered as overlapping soft blobs instead of dot grid.
+    for(var yy=-1; yy<rows; yy++){
+        for(var xx=-1; xx<cols; xx++){
+            var px = xx * cell;
+            var py = yy * cell;
+
+            var ux = (px - cxm) / minDim;
+            var uy = (py - cym) / minDim;
+
+            ux *= scale;
+            uy *= scale;
+
+            var d = Math.sqrt(ux*ux + uy*uy);
+            var a = Math.atan2(uy, ux);
+
+            // Layered viscous wave field — slower, thicker, more metallic.
+            var n1 = Math.sin((ux * 7.5 + time * 1.55) + Math.sin(uy * 5.5 - time * 0.75) * 1.4);
+            var n2 = Math.sin((uy * 8.2 - time * 1.15) + Math.cos(ux * 4.6 + time * 0.95) * 1.6);
+            var n3 = Math.sin(d * 18.0 - time * 2.1 + Math.sin(a * 3.0 + time) * 0.9);
+            var n4 = Math.cos(a * 4.0 + d * 11.0 - time * 1.35);
+
+            var field = n1 * 0.34 + n2 * 0.32 + n3 * 0.24 + n4 * 0.10;
+
+            // Audio increases the surface tension/ripple depth.
+            field += bass * 0.65 + mid * 0.22 + high * 0.18;
+
+            // Create liquid-metal islands with bright specular rims.
+            var mass = smoothstep(0.05, 0.72, field + 0.38 - d * 0.85);
+            var rim = smoothstep(0.42, 0.64, field + 0.35 - d * 0.65) -
+                      smoothstep(0.66, 0.86, field + 0.35 - d * 0.65);
+            var spec = Math.pow(Math.max(0, Math.sin(field * 4.8 + time * 1.2)), 8.0);
+
+            var light = mass * 0.48 + rim * 0.42 + spec * (0.65 + high * 0.8);
+            var alpha = mass * 0.18 + rim * 0.20 + spec * 0.36;
+
+            if(alpha > 0.015){
+                var stretch = 1.0 + rim * 1.6 + bass * 0.6;
+                var angle = a + time * 0.16 + field * 0.4;
+
+                ctx.fillStyle = chromeColor(light, alpha);
+
+                ctx.beginPath();
+                ctx.ellipse(
+                    px,
+                    py,
+                    cell * (1.45 + stretch),
+                    cell * (1.05 + spec * 1.8 + mid * 0.45),
+                    angle,
+                    0,
+                    Math.PI * 2
+                );
+                ctx.fill();
+            }
+        }
+    }
+
+    // Broad moving specular ribbons, the part that makes it read as polished metal.
+    ctx.globalCompositeOperation='screen';
+    for(var band=0; band<7; band++){
+        var offset = (band - 3) * minDim * 0.105 + Math.sin(time * 0.8 + band) * minDim * 0.04;
+        var y = cym + offset + Math.sin(time * 1.2 + band * 1.9) * minDim * 0.035;
+
+        var grad = ctx.createLinearGradient(cxm - minDim * 0.55, y - minDim * 0.08, cxm + minDim * 0.55, y + minDim * 0.08);
+        grad.addColorStop(0.0, 'rgba(0,0,0,0)');
+        grad.addColorStop(0.35, 'rgba(125,150,185,' + (0.05 + high * 0.04) + ')');
+        grad.addColorStop(0.50, 'rgba(255,255,255,' + (0.14 + bass * 0.13 + high * 0.12) + ')');
+        grad.addColorStop(0.65, 'rgba(80,120,170,' + (0.06 + mid * 0.04) + ')');
+        grad.addColorStop(1.0, 'rgba(0,0,0,0)');
+
+        ctx.strokeStyle = grad;
+        ctx.lineWidth = minDim * (0.018 + bass * 0.012);
+        ctx.beginPath();
+
+        for(var i=0;i<=80;i++){
+            var p = i / 80;
+            var x = cxm - minDim * 0.56 + p * minDim * 1.12;
+            var yy2 = y +
+                Math.sin(p * Math.PI * 4 + time * flow + band) * minDim * 0.022 +
+                Math.sin(p * Math.PI * 9 - time * 0.7) * minDim * 0.009;
+
+            if(i===0) ctx.moveTo(x, yy2);
+            else ctx.lineTo(x, yy2);
+        }
+        ctx.stroke();
+    }
+
+    // Dark contour lines for depth.
+    ctx.globalCompositeOperation='source-over';
+    ctx.strokeStyle = 'rgba(0,0,0,0.18)';
+    ctx.lineWidth = Math.max(1, 1.2 * vizDpr);
+    for(var ring=0; ring<5; ring++){
+        ctx.beginPath();
+        var rr = minDim * (0.18 + ring * 0.085 + bass * 0.025);
+        for(var j=0;j<=160;j++){
+            var aa = j / 160 * Math.PI * 2;
+            var wob = Math.sin(aa * 5 + time * 1.1 + ring) * minDim * 0.018;
+            var x2 = cxm + Math.cos(aa) * (rr + wob);
+            var y2 = cym + Math.sin(aa) * (rr * 0.72 + wob);
+            if(j===0) ctx.moveTo(x2,y2);
+            else ctx.lineTo(x2,y2);
+        }
+        ctx.closePath();
+        ctx.stroke();
+    }
   }
 
 if(MODE==='pulse'){

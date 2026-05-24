@@ -3083,10 +3083,10 @@ void main(){
   vec2 aR = vec2(resolution.x / resolution.y, 1.0);
   vec2 st = vUv * aR * scale;
 
-  float S = sin(time * 0.0014);
-  float C = cos(time * 0.0014);
+  float S = sin(time * 0.0007);
+  float C = cos(time * 0.0007);
 
-  float audio = bass * 0.85 + mid * 0.32 + high * 0.14;
+  float audio = bass * 0.13 + mid * 0.05 + high * 0.02;
   float shapeMix = mix(0.70, 1.55, clamp(shape,0.0,1.0));
 
   vec2 v1 = vec2(
@@ -3255,7 +3255,7 @@ void main(){
     gl.vertexAttribPointer(uniforms.aPos, 2, gl.FLOAT, false, 0, 0);
 
     var speedNorm = Math.max(0.0, Math.min(1.0, speed || 0.3));
-    var liquidTimeScale = 0.008 + speedNorm * 0.018 + (bass || 0) * 0.075 + (mid || 0) * 0.026 + (high || 0) * 0.012;
+    var liquidTimeScale = 0.004 + speedNorm * 0.009 + (bass || 0) * 0.0055 + (mid || 0) * 0.002 + (high || 0) * 0.001;
     gl.uniform1f(uniforms.time, (t || 0) * liquidTimeScale * 1000.0);
 
     var sizeMode = (typeof VISUAL_SIZE_MODE !== 'undefined') ? VISUAL_SIZE_MODE : 'medium';

@@ -432,11 +432,13 @@ body::after { content: ''; position: fixed; inset: 0; pointer-events: none; z-in
   <!-- Row 1: MODE -->
   <div class="row">
     <span class="row-lbl">MODE</span>
+    <button class="t on" id="btn-ripple" onclick="setMode('ripple')">⌁ FLUID</button>
+    <div class="vd"></div>
+    <button class="t"    id="btn-liquidmetal" onclick="setMode('liquidmetal')">◒ LIQUID METAL</button>
+    <div class="vd"></div>
     <button class="t"    id="btn-orb"    onclick="setMode('orb')">⬡ ORB BLOB</button>
     <div class="vd"></div>
     <button class="t"    id="btn-metal"  onclick="setMode('metal')">⬢ METAL SPHERE</button>
-    <div class="vd"></div>
-    <button class="t"    id="btn-ripple" onclick="setMode('ripple')">⌁ FLUID</button>
     <div class="vd"></div>
     <button class="t"    id="btn-bio"    onclick="setMode('bio')">⋯ BIOLUMINESCENCE</button>
     <div class="vd"></div>
@@ -587,7 +589,7 @@ var autoVJActive = false;
 var autoVJTimer = null;
 var autoVJIndex = 0;
 var autoVJIntervalMs = 12000;
-var autoVJModes = ['ripple','bio','orb','metal','osc','fft','lissajous','retrowave','star','iris','pulse','tiedye'];
+var autoVJModes = ['ripple','liquidmetal','bio','orb','metal','osc','fft','lissajous','retrowave','star','iris','pulse','tiedye'];
 // Metal sphere params
 var M_NOISE   = 1.16;
 var M_DISP    = 0.45;
@@ -609,7 +611,7 @@ var micGainNode = null;
 function setMode(m) {
   MODE = m;
 
-  var twoDModes = ['osc','fft','lissajous','retrowave','star','pulse'];
+  var twoDModes = ['osc','fft','lissajous','retrowave','star','pulse','liquidmetal'];
   var is2D = twoDModes.indexOf(m) !== -1;
 
   var modeButtonIds = {
@@ -617,6 +619,7 @@ function setMode(m) {
     orb: 'btn-orb',
     metal: 'btn-metal',
     ripple: 'btn-ripple',
+    liquidmetal: 'btn-liquidmetal',
     osc: 'btn-osc',
     fft: 'btn-fft',
     lissajous: 'btn-lissajous',
@@ -1449,7 +1452,77 @@ function drawExtraVisualizer(t, spd, bloom){
       ctx.fill();
     }
   }
-  else if(MODE==='pulse'){
+  else 
+  if(MODE==='liquidmetal'){
+    // Liquid Metal mode — adapted from the earlier standalone shader.
+    // Uses layered sine fields to create fluid metallic bands.
+    ctx.globalCompositeOperation='source-over';
+    ctx.fillStyle='rgba(0,0,0,0.18)';
+    ctx.fillRect(0,0,w,h);
+
+    ctx.globalCompositeOperation='lighter';
+
+    var time = t * (0.35 + spd * 1.25 + bass * 1.65);
+    var grid = IS_MOBILE ? 62 : 94;
+    var cellW = w / grid;
+    var cellH = h / grid;
+    var aspect = w / h;
+
+    function lmPalette(q, alpha){
+      q = Math.sin(q);
+      var cool = 110 + 70 * Math.sin(q * 2.3 + time * 0.7);
+      var warm = 170 + 65 * Math.cos(q * 1.7 - time * 0.45);
+      var v = 190 + 55 * Math.sin(q * 3.1 + bass * 2.0);
+      var r = Math.max(0, Math.min(255, cool + bass * 40 + high * 20));
+      var g = Math.max(0, Math.min(255, warm + mid * 35));
+      var b = Math.max(0, Math.min(255, v + high * 45));
+      return 'rgba(' + Math.round(r) + ',' + Math.round(g) + ',' + Math.round(b) + ',' + alpha + ')';
+    }
+
+    for(var yy=0; yy<grid; yy++){
+      for(var xx=0; xx<grid; xx++){
+        var uvx = xx / grid - 0.5;
+        var uvy = yy / grid - 0.5;
+        uvx *= aspect;
+
+        var dist = Math.sqrt(uvx*uvx + uvy*uvy);
+        var angle = Math.atan2(uvy, uvx);
+
+        var wave1 = Math.sin(uvx * 8.0 + time * 5.0);
+        var wave2 = Math.sin(uvy * 8.0 - time * 4.0);
+        var wave3 = Math.sin(dist * 18.0 - time * 8.0);
+        var wave4 = Math.sin(angle * 5.0 + dist * 12.0 + time * 2.5);
+
+        var audioReact = bass * 3.0 + mid * 1.8 + high * 1.2;
+        var pattern = wave1 + wave2 + wave3 + wave4 * 0.55 + audioReact;
+
+        var shine = Math.pow(Math.max(0, Math.sin(pattern + time)), 3.0);
+        var alpha = 0.10 + shine * 0.34 + bass * 0.08;
+
+        ctx.fillStyle = lmPalette(pattern, alpha);
+
+        var sizePulse = 1.0 + shine * 1.8 + bass * 1.2;
+        var rx = cellW * sizePulse * 1.35;
+        var ry = cellH * (0.8 + shine * 1.1 + mid * 0.8);
+
+        ctx.beginPath();
+        ctx.ellipse(xx * cellW, yy * cellH, rx, ry, angle + time * 0.15, 0, Math.PI * 2);
+        ctx.fill();
+      }
+    }
+
+    // central reflective swell
+    var radial = ctx.createRadialGradient(cx, cy, 0, cx, cy, Math.min(w,h) * (0.38 + bass * 0.18));
+    radial.addColorStop(0, 'rgba(255,255,255,' + (0.16 + bass * 0.22) + ')');
+    radial.addColorStop(0.35, 'rgba(160,210,255,' + (0.08 + mid * 0.16) + ')');
+    radial.addColorStop(1, 'rgba(0,0,0,0)');
+    ctx.fillStyle = radial;
+    ctx.beginPath();
+    ctx.arc(cx, cy, Math.min(w,h) * (0.6 + bass * 0.15), 0, Math.PI * 2);
+    ctx.fill();
+  }
+
+if(MODE==='pulse'){
     // Paper Heatmap-inspired cube mode.
     // Audio input controls cube speed, scale, contour intensity, and glow.
     ctx.globalCompositeOperation = 'source-over';
@@ -1464,7 +1537,13 @@ function drawExtraVisualizer(t, spd, bloom){
     var half = cubeSize * 0.5;
     var cx2 = cx + Math.sin(time * 0.42) * minDim * 0.025 * high;
     var cy2 = cy + Math.cos(time * 0.36) * minDim * 0.025 * mid;
-    var rotate = time * (0.12 + high * 0.26);
+        // Reduced rotation responsiveness for smoother motion
+    var rotate =
+        time * (
+            0.028 +
+            high * 0.045 +
+            bass * 0.02
+        );
     var tilt = 0.46 + Math.sin(time * 0.7) * 0.08;
 
     function rot2(x, y, a){
@@ -2479,7 +2558,7 @@ document.addEventListener('keydown',function(e){
   if(key===' '&&MODE==='ripple'){e.preventDefault();fluid.triggerSplat(1.0);}
 
   // Number keys 1-0 + numpad switch modes
-  var numModes=['ripple','bio','orb','metal','osc','fft','lissajous','retrowave','star','iris','pulse','tiedye'];
+  var numModes=['ripple','liquidmetal','bio','orb','metal','osc','fft','lissajous','retrowave','star','iris','pulse','tiedye'];
   var numKey = null;
   if(e.key>='1'&&e.key<='9') numKey = parseInt(e.key)-1;
   if(e.key==='0') numKey = 9;
@@ -3419,7 +3498,7 @@ var tieDyeSim = (function(){
   };
 
   window.cycleMode = function(direction){
-    var modes = window.autoVJModes || ['ripple','bio','orb','metal','osc','fft','lissajous','retrowave','star','iris','pulse','tiedye'];
+    var modes = window.autoVJModes || ['ripple','liquidmetal','bio','orb','metal','osc','fft','lissajous','retrowave','star','iris','pulse','tiedye'];
     var currentIndex = modes.indexOf(window.MODE);
 
     if (currentIndex < 0) currentIndex = 0;

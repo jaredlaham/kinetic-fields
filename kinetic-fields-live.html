@@ -72,24 +72,46 @@ input[type=range]::-moz-range-thumb { width: 22px; height: 22px;
 
 #auto-vj-status {
   position: fixed;
-  top: 62px;
+  top: 20px;
   left: 50%;
   transform: translateX(-50%);
-  z-index: 25;
-  padding: 7px 14px;
+  z-index: 9999;
+
+  display: flex;
+  align-items: center;
+  justify-content: center;
+
+  min-width: 148px;
+  height: 34px;
+
+  padding: 0 16px;
+
   border-radius: 999px;
-  border: 1px solid rgba(255,255,255,0.12);
+
   background: rgba(0,0,0,0.55);
   backdrop-filter: blur(14px);
   -webkit-backdrop-filter: blur(14px);
-  font-family: Inter, system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
-  font-size: 8px;
+
+  border: 1px solid rgba(255,255,255,0.12);
+
+  font-family: Inter, sans-serif;
+  font-size: 10px;
   font-weight: 700;
   letter-spacing: 0.18em;
   text-transform: uppercase;
+
   color: rgba(255,255,255,0.45);
-  pointer-events: none;
-  transition: opacity 0.35s, color 0.25s, border-color 0.25s, box-shadow 0.25s;
+
+  cursor: pointer;
+
+  pointer-events: auto !important;
+
+  transition:
+    opacity 0.25s ease,
+    color 0.25s ease,
+    border-color 0.25s ease,
+    box-shadow 0.25s ease,
+    background 0.25s ease;
 }
 #auto-vj-status.active {
   color: rgba(80,255,160,0.95);
@@ -201,126 +223,47 @@ body::after { content: ''; position: fixed; inset: 0; pointer-events: none; z-in
 
 @media (max-width: 768px) {
   #auto-vj-status {
-    top: calc(env(safe-area-inset-top, 0px) + 52px);
-    font-size: 7px;
-    padding: 6px 10px;
-  }
+  position: fixed;
+  top: 20px;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 9999;
 
-  #wordmark { cursor: pointer; -webkit-tap-highlight-color: transparent;
-    top: 14px;
-    left: 14px;
-    font-size: 13px;
-    opacity: 0.8;
-  }
+  display: flex;
+  align-items: center;
+  justify-content: center;
 
-  #freq-wrap {
-    top: 14px;
-    right: 14px;
-  }
+  min-width: 148px;
+  height: 34px;
 
-  #freq-label {
-    font-size: 7px;
-    letter-spacing: 0.14em;
-  }
+  padding: 0 16px;
 
-  #freq-val {
-    font-size: 14px;
-  }
+  border-radius: 999px;
 
-  #mic-wrap {
-    top: 12px;
-    gap: 6px;
-  }
+  background: rgba(0,0,0,0.55);
+  backdrop-filter: blur(14px);
+  -webkit-backdrop-filter: blur(14px);
 
-  #mic-btn {
-    font-size: 7px;
-    padding: 7px 12px;
-  }
+  border: 1px solid rgba(255,255,255,0.12);
 
-  #ui {
-    padding-bottom: calc(env(safe-area-inset-bottom, 16px) + 16px);
-    gap: 5px;
-    max-height: calc(65dvh - env(safe-area-inset-bottom, 16px));
-    overflow-y: auto;
-    -webkit-overflow-scrolling: touch;
-    pointer-events: auto;
-  }
+  font-family: Inter, sans-serif;
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
 
-  #mobile-hide-btn {
-    display: flex;
-  }
+  color: rgba(255,255,255,0.45);
 
-  #mobile-text-color-btn {
-    display: flex;
-  }
+  cursor: pointer;
 
-  /* All rows scroll horizontally — no wrapping, buttons stay on one line */
-  .row {
-    max-width: calc(100vw - 16px);
-    padding: 5px 7px;
-    border-radius: 22px;
-    gap: 2px;
-    flex-wrap: nowrap;
-    overflow-x: auto;
-    overflow-y: visible;
-    justify-content: flex-start;
-    scrollbar-width: none;
-    -webkit-overflow-scrolling: touch;
-  }
-  .row::-webkit-scrollbar { display: none; }
+  pointer-events: auto !important;
 
-  .row-lbl {
-    font-size: 6px;
-    letter-spacing: 0.14em;
-    padding: 0 4px;
-  }
-
-  .t {
-    font-size: 9px;
-    padding: 6px 7px;
-    letter-spacing: 0.02em;
-  }
-
-  .vd {
-    height: 11px;
-    margin: 0 1px;
-  }
-
-  .sg {
-    gap: 4px;
-    padding: 1px 3px;
-  }
-
-  .sg span {
-    font-size: 6px;
-    min-width: 34px;
-  }
-
-  .sg .val {
-    min-width: 24px;
-    font-size: 7px;
-  }
-
-  input[type=range] {
-    width: 54px;
-    height: 20px;
-  }
-
-  input[type=range]::-webkit-slider-thumb {
-    width: 26px;
-    height: 26px;
-    margin-top: -12px;
-  }
-
-  input[type=range]::-moz-range-thumb {
-    width: 26px;
-    height: 26px;
-  }
-
-  #center-fields {
-    -webkit-text-stroke: 0.75px rgba(255, 255, 255, 0.04);
-    line-height: 0.82;
-  }
+  transition:
+    opacity 0.25s ease,
+    color 0.25s ease,
+    border-color 0.25s ease,
+    box-shadow 0.25s ease,
+    background 0.25s ease;
 }
 
 @media (max-width: 480px) {
@@ -371,6 +314,64 @@ body::after { content: ''; position: fixed; inset: 0; pointer-events: none; z-in
   }
 }
 
+
+/* Mode transition fade */
+#mode-transition {
+  position: fixed;
+  inset: 0;
+  z-index: 18;
+  pointer-events: none;
+  background: #000;
+  opacity: 0;
+  transition: opacity 260ms ease;
+}
+#mode-transition.active {
+  opacity: 0.62;
+}
+#auto-vj-status {
+  position: fixed;
+  top: 20px;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 9999;
+
+  display: flex;
+  align-items: center;
+  justify-content: center;
+
+  min-width: 148px;
+  height: 34px;
+
+  padding: 0 16px;
+
+  border-radius: 999px;
+
+  background: rgba(0,0,0,0.55);
+  backdrop-filter: blur(14px);
+  -webkit-backdrop-filter: blur(14px);
+
+  border: 1px solid rgba(255,255,255,0.12);
+
+  font-family: Inter, sans-serif;
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+
+  color: rgba(255,255,255,0.45);
+
+  cursor: pointer;
+
+  pointer-events: auto !important;
+
+  transition:
+    opacity 0.25s ease,
+    color 0.25s ease,
+    border-color 0.25s ease,
+    box-shadow 0.25s ease,
+    background 0.25s ease;
+}
+
 </style>
 </head>
 <body>
@@ -380,6 +381,7 @@ body::after { content: ''; position: fixed; inset: 0; pointer-events: none; z-in
 <canvas id="bio-canvas"   style="position:fixed;inset:0;width:100%;height:100%;display:none;z-index:8;contain:strict;touch-action:none"></canvas>
 <canvas id="tiedye-canvas" style="position:fixed;inset:0;width:100%;height:100%;display:none;z-index:8;contain:strict;touch-action:none"></canvas>
 <canvas id="pulse-canvas" style="position:fixed;inset:0;width:100%;height:100%;display:none;z-index:8;contain:strict;touch-action:none"></canvas>
+<div id="mode-transition"></div>
 <div id="wordmark" style="cursor:pointer;user-select:none" onclick="toggleFieldsColor()">kinetic fields live</div>
 <div id="center-fields">kinetic fields</div>
 <div id="freq-wrap"><div id="freq-label">FREQUENCY</div><div id="freq-val">—</div></div>
@@ -403,30 +405,30 @@ body::after { content: ''; position: fixed; inset: 0; pointer-events: none; z-in
   <!-- Row 1: MODE -->
   <div class="row">
     <span class="row-lbl">MODE</span>
-    <button class="t"    id="btn-orb"    onclick="setMode('orb')">⬡ ORB BLOB</button>
+    <button class="t"    id="btn-orb"    onclick="transitionSetMode('orb')">⬡ ORB BLOB</button>
     <div class="vd"></div>
-    <button class="t"    id="btn-metal"  onclick="setMode('metal')">⬢ METAL SPHERE</button>
+    <button class="t"    id="btn-metal"  onclick="transitionSetMode('metal')">⬢ METAL SPHERE</button>
     <div class="vd"></div>
-    <button class="t"    id="btn-ripple" onclick="setMode('ripple')">⌁ FLUID</button>
+    <button class="t"    id="btn-ripple" onclick="transitionSetMode('ripple')">⌁ FLUID</button>
     <div class="vd"></div>
-    <button class="t"    id="btn-bio"    onclick="setMode('bio')">⋯ BIOLUMINESCENCE</button>
+    <button class="t"    id="btn-bio"    onclick="transitionSetMode('bio')">⋯ BIOLUMINESCENCE</button>
     <div class="vd"></div>
-    <button class="t"    id="btn-osc" onclick="setMode('osc')">⌇ OSC</button>
+    <button class="t"    id="btn-osc" onclick="transitionSetMode('osc')">⌇ OSC</button>
     <div class="vd"></div>
-    <button class="t"    id="btn-fft" onclick="setMode('fft')">⌉ FFT</button>
+    <button class="t"    id="btn-fft" onclick="transitionSetMode('fft')">⌉ FFT</button>
 
     <div class="vd"></div>
-    <button class="t"    id="btn-lissajous" onclick="setMode('lissajous')">⌀ ARC REACTOR</button>
+    <button class="t"    id="btn-lissajous" onclick="transitionSetMode('lissajous')">⌀ ARC REACTOR</button>
     <div class="vd"></div>
-    <button class="t"    id="btn-retrowave" onclick="setMode('retrowave')">⌗ RETRO</button>
+    <button class="t"    id="btn-retrowave" onclick="transitionSetMode('retrowave')">⌗ RETRO</button>
     <div class="vd"></div>
-    <button class="t"    id="btn-star" onclick="setMode('star')">✧ STAR</button>
+    <button class="t"    id="btn-star" onclick="transitionSetMode('star')">✧ STAR</button>
     <div class="vd"></div>
-    <button class="t"    id="btn-iris"  onclick="setMode('iris')">⌬ IRIS</button>
+    <button class="t"    id="btn-iris"  onclick="transitionSetMode('iris')">⌬ IRIS</button>
     <div class="vd"></div>
-    <button class="t"    id="btn-pulse" onclick="setMode('pulse')">◉ PULSE</button>
+    <button class="t"    id="btn-pulse" onclick="transitionSetMode('pulse')">◉ PULSE</button>
     <div class="vd"></div>
-    <button class="t"    id="btn-tiedye" onclick="setMode('tiedye')">◈ TIE DYE</button>
+    <button class="t"    id="btn-tiedye" onclick="transitionSetMode('tiedye')">◈ TIE DYE</button>
   </div>
 
   <!-- Row 2: TEXTURE — shared across orb + ripple -->
@@ -1421,38 +1423,92 @@ function drawExtraVisualizer(t, spd, bloom){
     }
   }
   else if(MODE==='pulse'){
-    // Breathing dot rings — 6 concentric rings of dots, audio-reactive
-    var numRings = 6;
-    var dotsPerRing = IS_MOBILE ? 36 : 60;
-    if(!window._pulseT) window._pulseT = 0;
-    window._pulseT += 0.018 * (spd + bass*0.4);
-    var bassExpand = 1 + bass * 0.7 + mid * 0.3;
-    for(var ri=0;ri<numRings;ri++){
-      var rf = (ri+1)/numRings;
-      var baseRad = Math.min(w,h) * (0.05 + rf * 0.40) * bassExpand;
-      var breathOff = Math.sin(window._pulseT + ri*1.1) * Math.min(w,h) * (0.02 + bass*0.06);
-      var rad = baseRad + breathOff;
-      var dotSize = Math.max(1.5, (2.2 + bass*5 + mid*2.5) * vizDpr * (1 - rf*0.25));
-      for(var di=0;di<dotsPerRing;di++){
-        var dang = (di/dotsPerRing)*Math.PI*2 + window._pulseT*0.25*(ri%2===0?1:-1);
-        var audioDisplace = audioByte(Math.floor(di/dotsPerRing*255));
-        // Map 0..1 audio to ±displacement for full ring distortion
-        var distort = (micActive ? (audioDisplace*2-1) : (audioDisplace-0.5)*0.3) * Math.min(w,h) * (0.06 + bass*0.12);
-        var r2 = rad + distort;
-        var dpx = cx + Math.cos(dang)*r2;
-        var dpy = cy + Math.sin(dang)*r2;
-        var dHue = vizHue + ri*30 + di*0.8;
-        var dAlpha = 0.55 + bass*0.45;
-        ctx.beginPath();
-        ctx.arc(dpx, dpy, Math.max(0.8, dotSize), 0, Math.PI*2);
-        ctx.fillStyle = hsl(dHue, 100, 58, 0.90);
-        ctx.shadowBlur = dotSize*4;
-        ctx.shadowColor = hsl(dHue, 100, 80, dAlpha*0.6);
-        ctx.fill();
-      }
+
+    ctx.globalCompositeOperation = 'lighter'
+
+    var time = t * (0.35 + spd * 0.6)
+
+    var grid = IS_MOBILE ? 36 : 54
+
+    var cellW = w / grid
+    var cellH = h / grid
+
+    for(var yy = 0; yy < grid; yy++){
+
+        for(var xx = 0; xx < grid; xx++){
+
+            var nx = xx / grid - 0.5
+            var ny = yy / grid - 0.5
+
+            var dist = Math.sqrt(nx*nx + ny*ny)
+
+            var angle = Math.atan2(ny, nx)
+
+            var wave1 =
+                Math.sin(dist * 18.0 - time * 3.2)
+
+            var wave2 =
+                Math.sin(angle * 6.0 + time * 2.5)
+
+            var wave3 =
+                Math.sin(
+                    (nx + ny) * 14.0 +
+                    time * 4.0
+                )
+
+            var audioReact =
+                bass * 2.5 +
+                mid * 1.8 +
+                high * 1.2
+
+            var mix =
+                wave1 +
+                wave2 +
+                wave3 +
+                audioReact
+
+            var hue =
+                (vizHue + mix * 90 + dist * 240) % 360
+
+            var light =
+                40 +
+                mix * 18 +
+                bass * 30
+
+            var alpha =
+                0.22 +
+                Math.abs(mix) * 0.12
+
+            ctx.fillStyle =
+                hsl(hue, 100, light, alpha)
+
+            var pulse =
+                1.0 +
+                Math.sin(time * 3.0 + dist * 12.0) *
+                (0.3 + bass * 0.9)
+
+            var size =
+                cellW * pulse * 1.6
+
+            ctx.beginPath()
+
+            ctx.arc(
+                xx * cellW,
+                yy * cellH,
+                size * 0.5,
+                0,
+                Math.PI * 2
+            )
+
+            ctx.fill()
+        }
     }
-    ctx.shadowBlur = 0;
-  }
+
+    applyBloom(null,
+        hsl(vizHue + bass * 120, 100, 70, 1)
+    )
+}
+
 
   ctx.restore();
 }

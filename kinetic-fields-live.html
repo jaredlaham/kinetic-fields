@@ -475,9 +475,9 @@ body::after { content: ''; position: fixed; inset: 0; pointer-events: none; z-in
     <div class="vd"></div>
     <button class="t"    id="tx4" onclick="setTex(4)">NEON</button>
     <div class="vd"></div>
-    <button class="t"    id="tx5" onclick="setTex(5)">VIOLET</button>
+    <button class="t"    id="tx5" onclick="setTex(5)">UV</button>
     <div class="vd"></div>
-    <button class="t"    id="tx6" onclick="setTex(6)">UV</button>
+    <button class="t"    id="tx6" onclick="setTex(6)">VINTAGE</button>
   </div>
 
   <!-- Row 3: SHAPE (orb) / MATERIAL (metal) / DENSITY (ripple) -->
@@ -578,6 +578,144 @@ body::after { content: ''; position: fixed; inset: 0; pointer-events: none; z-in
 // ═══════════════════════════════════════════════════════════════════
 var MODE    = 'ripple';
 var TEX     = 0;
+// ═══════════════════════════════════════════════════════════════════
+// UNIFIED TEXTURE PALETTE ENGINE
+// Shared by all 2D visualizer modes and texture-aware effects.
+// Texture order: Rainbow, Fire, Electric, Prism, Neon, UV, Vintage.
+// ═══════════════════════════════════════════════════════════════════
+var TEXTURE_KEYS = ['rainbow','fire','electric','prism','neon','uv','vintage'];
+var TEXTURE_NAMES = ['RAINBOW','FIRE','ELECTRIC','PRISM','NEON','UV','VINTAGE'];
+
+var PALETTES = {
+  rainbow: [
+    [35, 30, 170],
+    [40, 110, 255],
+    [50, 220, 255],
+    [90, 255, 180],
+    [255, 220, 90],
+    [255, 140, 60],
+    [255, 70, 180]
+  ],
+  fire: [
+    [0, 0, 0],
+    [10, 20, 50],
+    [0, 120, 255],
+    [120, 220, 255],
+    [255, 210, 120],
+    [255, 140, 30],
+    [255, 60, 0]
+  ],
+  electric: [
+    [5, 0, 20],
+    [35, 20, 90],
+    [70, 220, 255],
+    [200, 255, 80],
+    [255, 255, 80],
+    [255, 120, 0],
+    [255, 40, 0]
+  ],
+  prism: [
+    [0, 0, 0],
+    [60, 120, 255],
+    [140, 220, 255],
+    [200, 180, 255],
+    [255, 120, 60],
+    [255, 40, 120],
+    [255, 255, 255]
+  ],
+  neon: [
+    [20, 20, 20],
+    [0, 255, 170],
+    [0, 220, 255],
+    [120, 255, 90],
+    [120, 60, 255],
+    [255, 60, 220],
+    [255, 255, 255]
+  ],
+  uv: [
+    [0, 0, 0],
+    [70, 0, 130],
+    [120, 0, 255],
+    [0, 220, 255],
+    [255, 0, 220],
+    [255, 255, 80],
+    [255, 255, 255]
+  ],
+  vintage: [
+    [15, 25, 70],
+    [30, 100, 120],
+    [80, 170, 150],
+    [230, 215, 160],
+    [255, 180, 60],
+    [240, 90, 20],
+    [190, 40, 20]
+  ]
+};
+
+function getTextureKey(){
+  return TEXTURE_KEYS[Math.max(0, Math.min(TEXTURE_KEYS.length - 1, TEX || 0))] || 'rainbow';
+}
+
+function currentPalette(){
+  return PALETTES[getTextureKey()] || PALETTES.rainbow;
+}
+
+function paletteRGB(v){
+  var palette = currentPalette();
+  v = Math.max(0, Math.min(1, v));
+  var scaled = v * (palette.length - 1);
+  var i = Math.floor(scaled);
+  var f = scaled - i;
+  var c1 = palette[i];
+  var c2 = palette[Math.min(palette.length - 1, i + 1)];
+
+  return [
+    Math.round(c1[0] + (c2[0] - c1[0]) * f),
+    Math.round(c1[1] + (c2[1] - c1[1]) * f),
+    Math.round(c1[2] + (c2[2] - c1[2]) * f)
+  ];
+}
+
+function paletteColor(v, alpha){
+  if(alpha === undefined) alpha = 1;
+  var c = paletteRGB(v);
+  return 'rgba(' + c[0] + ',' + c[1] + ',' + c[2] + ',' + alpha + ')';
+}
+
+function paletteHslFallback(h, s, l, a){
+  var t = (((h || 0) % 360) + 360) % 360 / 360;
+  var lightBoost = Math.max(0, Math.min(1, (l || 50) / 100));
+  var c = paletteRGB(t);
+
+  var mix = 0.48 + lightBoost * 0.55;
+  c = [
+    Math.round(c[0] * mix + 255 * Math.max(0, lightBoost - 0.82) * 0.75),
+    Math.round(c[1] * mix + 255 * Math.max(0, lightBoost - 0.82) * 0.75),
+    Math.round(c[2] * mix + 255 * Math.max(0, lightBoost - 0.82) * 0.75)
+  ];
+
+  if(getTextureKey() === 'vintage'){
+    c = [
+      Math.round(c[0] * 0.90 + 18),
+      Math.round(c[1] * 0.84 + 16),
+      Math.round(c[2] * 0.68 + 10)
+    ];
+  }
+
+  return 'rgba(' + Math.min(255,c[0]) + ',' + Math.min(255,c[1]) + ',' + Math.min(255,c[2]) + ',' + (a === undefined ? 1 : a) + ')';
+}
+
+function paletteGlowStrength(){
+  var key = getTextureKey();
+  if(key === 'electric') return 1.65;
+  if(key === 'uv') return 1.55;
+  if(key === 'neon') return 1.45;
+  if(key === 'fire') return 1.35;
+  if(key === 'prism') return 1.25;
+  if(key === 'vintage') return 0.72;
+  return 1.0;
+}
+
 var WIRE    = true;
 var DETAIL  = 3;
 var BLOOM   = 0;
@@ -740,49 +878,51 @@ function toggleAutoVJ() {
 }
 
 function setTex(n) {
-  TEX = n;
+  TEX = Math.max(0, Math.min(6, n));
+
   for (var i = 0; i < 7; i++) {
     var el = document.getElementById('tx'+i);
-    if (el) el.classList.toggle('on', i===n);
+    if (el) el.classList.toggle('on', i===TEX);
   }
 
-  // ── 2D palette: map TEX to hue base + sat/light tweaks ───────────
-  var palettes2D = [
-    { hue: 190, sat: 1.0,  light:  0 },   // 0 RAINBOW
-    { hue:   8, sat: 1.1,  light:  4 },   // 1 FIRE
-    { hue: 215, sat: 1.15, light:  2 },   // 2 ELECTRIC
-    { hue: 175, sat: 0.7,  light:  8 },   // 3 PRISM
-    { hue:  90, sat: 1.2,  light:  0 },   // 4 NEON
-    { hue: 270, sat: 1.05, light: -4 },   // 5 VIOLET
-    { hue: 285, sat: 1.2,  light: -2 },   // 6 UV
+  // Existing 2D modes call hsl(); hsl() is now palette-aware.
+  // These values affect movement/contrast, not the final shared palette colors.
+  var paletteMood = [
+    { hue: 190, sat: 1.00, light:  0 },  // Rainbow
+    { hue:  18, sat: 1.08, light:  2 },  // Fire
+    { hue: 205, sat: 1.18, light:  4 },  // Electric
+    { hue: 175, sat: 0.88, light:  8 },  // Prism
+    { hue: 135, sat: 1.20, light:  2 },  // Neon
+    { hue: 285, sat: 1.22, light: -4 },  // UV
+    { hue:  35, sat: 0.62, light: -2 }   // Vintage
   ];
-  var p = palettes2D[n] || palettes2D[0];
+
+  var p = paletteMood[TEX] || paletteMood[0];
   vizHueBase  = p.hue;
   vizSatMult  = p.sat;
   vizLightMod = p.light;
 
-  // ── Metal: map TEX → metalType ───────────────────────────────────
-  // RAINBOW→rainbow(5), FIRE→gold(1), ELECTRIC→titanium(3),
-  // PRISM→chrome(0),   NEON→black(4), VIOLET→rainbow(5)
-  var metalMap = [5, 1, 3, 0, 4, 5, 4];
+  // Metal sphere behavior preset.
+  var metalMap = [5, 1, 3, 0, 4, 4, 2];
   if (typeof M_TYPE !== 'undefined') {
-    M_TYPE = metalMap[n];
+    M_TYPE = metalMap[TEX];
     for (var j = 0; j < 6; j++) {
       var mb = document.getElementById('mt'+j);
       if (mb) mb.classList.toggle('on', j === M_TYPE);
     }
   }
 
-  // ── Ripple: map TEX → fluid color preset ─────────────────────────
-  var fluidMap = ['auto','cosmic','haxiomic','plasma','acid','plasma','haxiomic'];
+  // Fluid engine behavior preset. Color family is unified in all 2D modes.
+  var fluidMap = ['auto','plasma','haxiomic','cosmic','acid','plasma','mono'];
   if (typeof fluid !== 'undefined' && fluid && fluid.setColor) {
-    fluid.setColor(fluidMap[n]);
+    fluid.setColor(fluidMap[TEX]);
     ['auto','cosmic','haxiomic','plasma','acid','mono'].forEach(function(nm,i){
       var fc = document.getElementById('fc'+i);
-      if (fc) fc.classList.toggle('on', nm === fluidMap[n]);
+      if (fc) fc.classList.toggle('on', nm === fluidMap[TEX]);
     });
   }
 }
+
 function setFluidColor(m){
   fluid.setColor(m);
   ['auto','cosmic','haxiomic','plasma','acid','mono'].forEach(function(n,i){
@@ -1227,9 +1367,7 @@ function audioByte(i){
   return Math.max(0, Math.min(1, v));
 }
 function hsl(h,s,l,a){
-  var ss = Math.min(100, Math.max(0, s * vizSatMult));
-  var ll = Math.min(95,  Math.max(5,  l + vizLightMod));
-  return 'hsla(' + h + ',' + ss + '%,' + ll + '%,' + a + ')';
+  return paletteHslFallback(h, s, l, a);
 }
 function drawExtraVisualizer(t, spd, bloom){
   if(!vizCtx2d) initViz2D();
@@ -1269,7 +1407,7 @@ function drawExtraVisualizer(t, spd, bloom){
   function applyBloom(strokeFn, color) {
     if (bloom < 0.05) return;
     var prevBlur = ctx.shadowBlur;
-    ctx.shadowBlur = (20 + bloom * 60) * vizDpr;
+    ctx.shadowBlur = (20 + bloom * 60) * vizDpr * paletteGlowStrength();
     ctx.shadowColor = color || hsl(vizHue, 100, 70, bloom * 0.9);
     if (strokeFn) strokeFn();
     ctx.shadowBlur = prevBlur;
@@ -1490,36 +1628,24 @@ function drawExtraVisualizer(t, spd, bloom){
 
     function chrome(v, alpha){
       v = clamp01(v);
-      var r, g, b;
+      var metal = paletteRGB(v);
+      var shine = Math.pow(v, 3.0);
 
-      // High contrast mercury ramp with blue edge tint
-      if(v < 0.22){
-        var a = v / 0.22;
-        r = 2 + a * 20;
-        g = 3 + a * 23;
-        b = 5 + a * 32;
-      } else if(v < 0.52){
-        var a2 = (v - 0.22) / 0.30;
-        r = 22 + a2 * 88;
-        g = 26 + a2 * 98;
-        b = 37 + a2 * 122;
-      } else if(v < 0.82){
-        var a3 = (v - 0.52) / 0.30;
-        r = 110 + a3 * 108;
-        g = 124 + a3 * 110;
-        b = 159 + a3 * 82;
+      if(getTextureKey() === 'vintage'){
+        metal = [
+          Math.round(metal[0] * 0.88 + 20),
+          Math.round(metal[1] * 0.82 + 18),
+          Math.round(metal[2] * 0.62 + 12)
+        ];
       } else {
-        var a4 = (v - 0.82) / 0.18;
-        r = 218 + a4 * 37;
-        g = 234 + a4 * 21;
-        b = 241 + a4 * 14;
+        metal = [
+          Math.round(metal[0] * (0.62 + shine * 0.7) + 255 * shine * 0.28),
+          Math.round(metal[1] * (0.62 + shine * 0.7) + 255 * shine * 0.28),
+          Math.round(metal[2] * (0.62 + shine * 0.7) + 255 * shine * 0.28)
+        ];
       }
 
-      // Cold reflective shimmer
-      b += high * 18;
-      g += mid * 10;
-
-      return 'rgba(' + Math.round(Math.min(255,r)) + ',' + Math.round(Math.min(255,g)) + ',' + Math.round(Math.min(255,b)) + ',' + alpha + ')';
+      return 'rgba(' + Math.min(255, metal[0]) + ',' + Math.min(255, metal[1]) + ',' + Math.min(255, metal[2]) + ',' + alpha + ')';
     }
 
     ctx.globalCompositeOperation='lighter';
@@ -1565,9 +1691,9 @@ function drawExtraVisualizer(t, spd, bloom){
       var y = cy + (band - 2.5) * minDim * 0.105 + Math.sin(time * 0.85 + band * 1.7) * minDim * 0.035;
       var grad = ctx.createLinearGradient(cx - minDim * 0.55, y, cx + minDim * 0.55, y);
       grad.addColorStop(0, 'rgba(0,0,0,0)');
-      grad.addColorStop(0.36, 'rgba(80,110,150,' + (0.08 + high * 0.05) + ')');
-      grad.addColorStop(0.50, 'rgba(255,255,255,' + (0.20 + bass * 0.14 + high * 0.12) + ')');
-      grad.addColorStop(0.64, 'rgba(80,120,170,' + (0.08 + mid * 0.05) + ')');
+      grad.addColorStop(0.36, paletteColor(0.28, 0.08 + high * 0.05));
+      grad.addColorStop(0.50, paletteColor(0.96, 0.20 + bass * 0.14 + high * 0.12));
+      grad.addColorStop(0.64, paletteColor(0.55, 0.08 + mid * 0.05));
       grad.addColorStop(1, 'rgba(0,0,0,0)');
 
       ctx.strokeStyle = grad;
@@ -1657,8 +1783,8 @@ if(MODE==='lightning'){
       ctx.lineCap='round';
       ctx.lineJoin='round';
       ctx.shadowBlur = (28 + flash * 55) * vizDpr;
-      ctx.shadowColor = 'rgba(80,170,255,0.9)';
-      ctx.strokeStyle = 'rgba(35,115,255,' + (0.26 * alpha) + ')';
+      ctx.shadowColor = paletteColor(0.72, 0.9);
+      ctx.strokeStyle = paletteColor(0.38, 0.26 * alpha);
       ctx.lineWidth = thick * 6.0 * vizDpr;
       ctx.beginPath();
       points.forEach(function(pt,idx){ if(idx===0) ctx.moveTo(pt.x,pt.y); else ctx.lineTo(pt.x,pt.y); });
@@ -1666,8 +1792,8 @@ if(MODE==='lightning'){
 
       // mid cyan body
       ctx.shadowBlur = (14 + flash * 32) * vizDpr;
-      ctx.shadowColor = 'rgba(120,225,255,0.95)';
-      ctx.strokeStyle = 'rgba(120,220,255,' + (0.58 * alpha) + ')';
+      ctx.shadowColor = paletteColor(0.82, 0.95);
+      ctx.strokeStyle = paletteColor(0.68, 0.58 * alpha);
       ctx.lineWidth = thick * 2.6 * vizDpr;
       ctx.beginPath();
       points.forEach(function(pt,idx){ if(idx===0) ctx.moveTo(pt.x,pt.y); else ctx.lineTo(pt.x,pt.y); });
@@ -1675,8 +1801,8 @@ if(MODE==='lightning'){
 
       // hot white core
       ctx.shadowBlur = (4 + flash * 18) * vizDpr;
-      ctx.shadowColor = 'rgba(255,255,255,1)';
-      ctx.strokeStyle = 'rgba(255,255,255,' + (0.84 * alpha) + ')';
+      ctx.shadowColor = paletteColor(1.0, 1);
+      ctx.strokeStyle = paletteColor(0.98, 0.84 * alpha);
       ctx.lineWidth = Math.max(1, thick * 0.85 * vizDpr);
       ctx.beginPath();
       points.forEach(function(pt,idx){ if(idx===0) ctx.moveTo(pt.x,pt.y); else ctx.lineTo(pt.x,pt.y); });
@@ -1715,7 +1841,7 @@ if(MODE==='lightning'){
     // occasional screen flash
     if(flash > 0.28){
       ctx.globalCompositeOperation='screen';
-      ctx.fillStyle='rgba(120,190,255,' + Math.min(0.18, flash * 0.12) + ')';
+      ctx.fillStyle=paletteColor(0.75, Math.min(0.18, flash * 0.12));
       ctx.fillRect(0,0,w,h);
     }
 
@@ -1761,20 +1887,7 @@ if(MODE==='pulse'){
     }
 
     function heatColor(value, alpha){
-      var colors = [
-        [41,52,209], [35,138,216], [35,207,179],
-        [70,218,72], [188,218,55], [232,152,44], [229,49,49]
-      ];
-      value = Math.max(0, Math.min(1, value));
-      var scaled = value * (colors.length - 1);
-      var i = Math.floor(scaled);
-      var f = scaled - i;
-      var c1 = colors[i];
-      var c2 = colors[Math.min(colors.length - 1, i + 1)];
-      var r = Math.round(c1[0] + (c2[0] - c1[0]) * f);
-      var g = Math.round(c1[1] + (c2[1] - c1[1]) * f);
-      var b = Math.round(c1[2] + (c2[2] - c1[2]) * f);
-      return 'rgba(' + r + ',' + g + ',' + b + ',' + alpha + ')';
+        return paletteColor(value, alpha);
     }
 
     var pts = [

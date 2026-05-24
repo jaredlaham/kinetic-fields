@@ -2045,21 +2045,20 @@ if(MODE==='ascii'){
   }
 
 if(MODE==='plasma'){
-    // Plasma — performant soft liquid shader-style field.
-    // Less vivid, smoother, closer to the Framer shader reference.
-    // Size buttons control softness/detail: larger = bigger, smoother blobs.
+    // Plasma — smooth, performant, and less pixelated.
+    // Safe version: keeps render loop stable while increasing overlap.
     ctx.globalCompositeOperation='source-over';
-    ctx.fillStyle='rgba(0,0,0,0.20)';
+    ctx.fillStyle='rgba(0,0,0,0.19)';
     ctx.fillRect(0,0,w,h);
 
     var minDim = Math.min(w,h);
-    var time = t * (0.11 + spd * 0.24 + bass * 0.28);
+    var time = t * (0.13 + spd * 0.28 + bass * 0.30);
     var sizeNorm = VISUAL_SIZE_MODE === 'small' ? 0.75 : (VISUAL_SIZE_MODE === 'medium' ? 1.15 : (VISUAL_SIZE_MODE === 'large' ? 1.75 : 2.65));
 
-    // Larger step = dramatically faster and smoother.
-    var step = Math.max(5, Math.floor((IS_MOBILE ? 8 : 6) * (0.15 + sizeNorm * 0.55)));
-    var radius = step * (3.85 + bass * 0.75);
-    var amp = 0.82 + bass * 0.55 + mid * 0.22;
+    // Keep this safely bounded. Smaller than before, but not so dense it kills the page.
+    var step = Math.max(7, Math.floor((IS_MOBILE ? 10 : 8) * Math.max(0.65, sizeNorm * 0.42)));
+    var radius = step * (3.10 + bass * 0.45);
+    var amp = 0.82 + bass * 0.45 + mid * 0.18;
 
     ctx.globalCompositeOperation='lighter';
 
@@ -2069,36 +2068,32 @@ if(MODE==='plasma'){
         var y = (py - cy) / minDim;
         var d = Math.sqrt(x*x + y*y);
 
-        // Cheap domain warp; smooth movement without dense pixel sampling.
-        var wx = Math.sin(y * 5.2 + time * 1.05) * (0.10 + bass * 0.05);
-        var wy = Math.cos(x * 4.8 - time * 0.85) * (0.10 + mid * 0.04);
+        var wx = Math.sin(y * 5.1 + time * 1.0) * (0.095 + bass * 0.045);
+        var wy = Math.cos(x * 4.7 - time * 0.82) * (0.095 + mid * 0.035);
 
         var xx = x + wx;
         var yy = y + wy;
 
         var v =
-          Math.sin(xx * 6.4 * amp + time * 1.1) +
-          Math.sin(yy * 7.1 * amp - time * 0.95) +
-          Math.sin((xx + yy) * 5.8 + time * 1.2) +
-          Math.cos(d * 12.0 - time * 1.35);
+          Math.sin(xx * 6.2 * amp + time * 1.05) +
+          Math.sin(yy * 6.8 * amp - time * 0.92) +
+          Math.sin((xx + yy) * 5.4 + time * 1.12) +
+          Math.cos(d * 11.0 - time * 1.22);
 
-        var q = 0.5 + 0.5 * Math.sin(v * 1.18 + time * 0.28);
+        var q = 0.5 + 0.5 * Math.sin(v * 1.06 + time * 0.22);
+        q = Math.pow(q, 0.96);
 
-        // Softer contrast, less vivid.
-        q = Math.pow(q, 0.92);
-        var palettePos = (q * 0.72 + d * 0.20 + time * 0.025) % 1;
-        var alpha = 0.030 + q * 0.090 + bass * 0.022;
+        var palettePos = (q * 0.70 + d * 0.18 + time * 0.018) % 1;
+        var alpha = 0.034 + q * 0.102 + bass * 0.024;
 
-        // Vintage and fire can get harsh, so keep alpha low and let overlap build color.
         ctx.fillStyle = paletteColor(palettePos, alpha);
 
         ctx.beginPath();
-        ctx.arc(px, py, radius * (0.82 + q * 0.42), 0, Math.PI * 2);
+        ctx.arc(px, py, radius * (0.90 + q * 0.36), 0, Math.PI * 2);
         ctx.fill();
       }
     }
 
-    // Soft center wash — not too bright.
     ctx.globalCompositeOperation='screen';
 
     var glow = ctx.createRadialGradient(
@@ -2110,8 +2105,8 @@ if(MODE==='plasma'){
       minDim * (0.52 + bass * 0.12)
     );
 
-    glow.addColorStop(0.0, paletteColor((time * 0.04) % 1, 0.105 + bass * 0.08));
-    glow.addColorStop(0.48, paletteColor((time * 0.04 + 0.28) % 1, 0.060 + mid * 0.05));
+    glow.addColorStop(0.0, paletteColor((time * 0.04) % 1, 0.10 + bass * 0.075));
+    glow.addColorStop(0.48, paletteColor((time * 0.04 + 0.28) % 1, 0.055 + mid * 0.045));
     glow.addColorStop(1.0, 'rgba(0,0,0,0)');
 
     ctx.fillStyle = glow;
@@ -2119,12 +2114,12 @@ if(MODE==='plasma'){
     ctx.arc(cx, cy, minDim, 0, Math.PI * 2);
     ctx.fill();
 
-    // Slow liquid ribbons, very subtle.
-    for(var band=0; band<4; band++){
+    // Minimal ribbons for polish without performance cost.
+    for(var band=0; band<3; band++){
       var y0 =
         cy +
-        (band - 1.5) * minDim * 0.14 +
-        Math.sin(time * 0.62 + band) * minDim * 0.035;
+        (band - 1) * minDim * 0.15 +
+        Math.sin(time * 0.58 + band) * minDim * 0.030;
 
       var grad = ctx.createLinearGradient(
         cx - minDim * 0.55,
@@ -2134,20 +2129,20 @@ if(MODE==='plasma'){
       );
 
       grad.addColorStop(0, 'rgba(0,0,0,0)');
-      grad.addColorStop(0.5, paletteColor((band / 4 + time * 0.025) % 1, 0.045 + bass * 0.045));
+      grad.addColorStop(0.5, paletteColor((band / 3 + time * 0.02) % 1, 0.038 + bass * 0.035));
       grad.addColorStop(1, 'rgba(0,0,0,0)');
 
       ctx.strokeStyle = grad;
-      ctx.lineWidth = minDim * (0.004 + bass * 0.003);
+      ctx.lineWidth = minDim * (0.0045 + bass * 0.003);
 
       ctx.beginPath();
 
-      for(var i=0;i<=42;i++){
-        var p=i/42;
+      for(var i=0;i<=34;i++){
+        var p=i/34;
         var x2 = cx - minDim*0.56 + p*minDim*1.12;
         var y2 =
           y0 +
-          Math.sin(p*Math.PI*3.1 + time*0.75 + band) * minDim * 0.020;
+          Math.sin(p*Math.PI*2.8 + time*0.70 + band) * minDim * 0.018;
 
         if(i===0) ctx.moveTo(x2,y2);
         else ctx.lineTo(x2,y2);

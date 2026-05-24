@@ -405,7 +405,7 @@ body::after { content: ''; position: fixed; inset: 0; pointer-events: none; z-in
 <div id="mode-transition"></div>
 <canvas id="glc"></canvas>
 <canvas id="viz-canvas" style="position:fixed;inset:0;width:100%;height:100%;display:none;pointer-events:none;z-index:8;background:transparent;contain:strict;touch-action:none"></canvas>
-<canvas id="liquidmetal-canvas" style="position:fixed;top:0;left:0;width:100vw;height:100vh;display:none;pointer-events:none;z-index:8;background:#000"></canvas>
+<canvas id="liquidmetal-canvas" style="position:fixed;inset:0;width:100vw;height:100vh;min-width:100vw;min-height:100vh;display:none;pointer-events:none;z-index:8;background:#000;contain:none;touch-action:none"></canvas>
 <canvas id="fluid-canvas" style="position:fixed;inset:0;width:100%;height:100%;display:none;pointer-events:none;z-index:2;contain:strict;touch-action:none"></canvas>
 <canvas id="bio-canvas"   style="position:fixed;inset:0;width:100%;height:100%;display:none;z-index:8;contain:strict;touch-action:none"></canvas>
 <canvas id="tiedye-canvas" style="position:fixed;inset:0;width:100%;height:100%;display:none;z-index:8;contain:strict;touch-action:none"></canvas>
@@ -3005,195 +3005,308 @@ var t0=performance.now(), frame=0;
 
 
 
+
 // ═══════════════════════════════════════════════════════════════════
-// LIQUID METAL WEBGL MODE — Flowing Chrome Style
+// LIQUID METAL WEBGL MODE — CodePen cheapNoise-style shader
+// Closely mirrors Lea Rosema / shader-art example structure:
+// cheapNoise + warped noise vectors + 4-color reflective mixing.
 // ═══════════════════════════════════════════════════════════════════
-var liquidMetalGLMode=(function(){
-  let canvas,gl,program,buffer;
-  let uniforms={};
+var liquidMetalGLMode = (function(){
+  var canvas = null;
+  var gl = null;
+  var program = null;
+  var buffer = null;
+  var uniforms = {};
+  var booted = false;
+  var lastTex = -1;
+  var colorData = new Float32Array(12);
 
-  const vs=`
-  attribute vec2 aPos;
-  varying vec2 vUv;
-  void main(){
-    vUv=aPos*.5+.5;
-    gl_Position=vec4(aPos,0.,1.);
-  }`;
+  var vs = `
+attribute vec2 aPos;
+varying vec2 vUv;
+void main(){
+  vUv = aPos * 0.5 + 0.5;
+  gl_Position = vec4(aPos, 0.0, 1.0);
+}`;
 
-  const fs=`
-  precision highp float;
-  varying vec2 vUv;
+  var fs = `
+precision highp float;
+varying vec2 vUv;
 
-  uniform vec2 uResolution;
-  uniform float uTime;
-  uniform float uBass;
-  uniform float uMid;
-  uniform float uHigh;
-  uniform float uSpeed;
+uniform float time;
+uniform float scale;
+uniform vec2 resolution;
+uniform vec3 color1;
+uniform vec3 color2;
+uniform vec3 color3;
+uniform vec3 color4;
+uniform float ax;
+uniform float ay;
+uniform float az;
+uniform float aw;
+uniform float bx;
+uniform float by;
+uniform float bass;
+uniform float mid;
+uniform float high;
 
-  float hash(vec2 p){
-    return fract(sin(dot(p,vec2(127.1,311.7)))*43758.5453123);
-  }
+const float PI = 3.141592654;
 
-  float noise(vec2 p){
-    vec2 i=floor(p);
-    vec2 f=fract(p);
-    vec2 u=f*f*(3.0-2.0*f);
+// Same concept as the reference: a compact sin/cos cheapNoise field.
+float cheapNoise(vec3 stp) {
+  vec3 p = vec3(stp.st, stp.p);
+  vec4 a = vec4(ax, ay, az, aw);
 
-    return mix(
-      mix(hash(i+vec2(0,0)),hash(i+vec2(1,0)),u.x),
-      mix(hash(i+vec2(0,1)),hash(i+vec2(1,1)),u.x),
-      u.y
-    );
-  }
+  return mix(
+    sin(p.z + p.x * a.x + cos(p.x * a.x - p.z)) *
+    cos(p.z + p.y * a.y + cos(p.y * a.x + p.z)),
 
-  float fbm(vec2 p){
-    float v=0.;
-    float a=.5;
-    for(int i=0;i<5;i++){
-      v+=a*noise(p);
-      p*=2.;
-      a*=.5;
+    sin(1.0 + p.x * a.z + p.z + cos(p.y * a.w - p.z)) *
+    cos(1.0 + p.y * a.w + p.z + cos(p.x * a.x + p.z)),
+
+    0.436
+  );
+}
+
+float grain(vec2 p){
+  return fract(sin(dot(p,vec2(12.9898,78.233))) * 43758.5453);
+}
+
+void main(){
+  vec2 aR = vec2(resolution.x / resolution.y, 1.0);
+
+  // Fullscreen, crisp, not blurry.
+  vec2 st = vUv * aR * scale;
+
+  float S = sin(time * 0.005);
+  float C = cos(time * 0.005);
+
+  // Audio subtly increases flow complexity without destroying the reference look.
+  float audio = bass * 0.65 + mid * 0.25 + high * 0.10;
+
+  vec2 v1 = vec2(
+    cheapNoise(vec3(st, 2.0)),
+    cheapNoise(vec3(st, 1.0))
+  );
+
+  vec2 v2 = vec2(
+    cheapNoise(vec3(st + bx * v1 + vec2(C * 1.7, S * 9.2), 0.15 * time + audio * 0.35)),
+    cheapNoise(vec3(st + by * v1 + vec2(S * 8.3, C * 2.8), 0.126 * time + audio * 0.28))
+  );
+
+  float n = 0.5 + 0.5 * cheapNoise(vec3(st + v2, 0.0));
+
+  // Match source formula closely, then push contrast/crispness.
+  vec3 color = mix(
+    color1,
+    color2,
+    clamp((n*n) * 8.0, 0.0, 1.0)
+  );
+
+  color = mix(
+    color,
+    color3,
+    clamp(length(v1), 0.0, 1.0)
+  );
+
+  color = mix(
+    color,
+    color4,
+    clamp(abs(v2.x), 0.0, 1.0)
+  );
+
+  color /= n*n + n * 7.0;
+
+  // Make it richer and sharper than the prior soft version.
+  color = pow(color, vec3(0.72));
+  color *= 1.25 + audio * 0.25;
+
+  // Add glossy contrast lines from field gradient.
+  float edge = abs(cheapNoise(vec3(st + v2 * 0.55, time * 0.05)));
+  float spec = pow(clamp(edge, 0.0, 1.0), 8.0);
+  color += vec3(1.0) * spec * 0.22;
+
+  // Subtle film grain only.
+  float g = grain(gl_FragCoord.xy + floor(time * 0.15));
+  color += (g - 0.5) * 0.025;
+
+  // Vignette, very light.
+  vec2 centered = vUv * 2.0 - 1.0;
+  float vig = smoothstep(1.45, 0.30, length(centered));
+  color *= 0.78 + vig * 0.34;
+
+  gl_FragColor = vec4(clamp(color, 0.0, 1.0), 1.0);
+}`;
+
+  function compile(type, src){
+    var sh = gl.createShader(type);
+    gl.shaderSource(sh, src);
+    gl.compileShader(sh);
+
+    if(!gl.getShaderParameter(sh, gl.COMPILE_STATUS)){
+      console.warn('Liquid metal shader compile error:', gl.getShaderInfoLog(sh));
+      return null;
     }
-    return v;
+
+    return sh;
   }
 
-  void main(){
-    vec2 uv=(gl_FragCoord.xy*2.-uResolution.xy)/min(uResolution.x,uResolution.y);
+  function boot(){
+    canvas = document.getElementById('liquidmetal-canvas');
+    if(!canvas) return false;
 
-    float audio=uBass*.9+uMid*.35+uHigh*.15;
-    float t=uTime*(.22+uSpeed*.15+audio*.08);
+    gl = canvas.getContext('webgl', {
+      alpha: false,
+      antialias: false,
+      depth: false,
+      stencil: false,
+      preserveDrawingBuffer: false
+    }) || canvas.getContext('experimental-webgl');
 
-    vec2 p=uv;
+    if(!gl) return false;
 
-    // Smooth liquid domain warp
-    float n1=fbm(p*2.0+vec2(t*.25,-t*.15));
-    float n2=fbm(p*2.0+vec2(-t*.18,t*.22));
+    var v = compile(gl.VERTEX_SHADER, vs);
+    var f = compile(gl.FRAGMENT_SHADER, fs);
+    if(!v || !f) return false;
 
-    p+=vec2(n1-.5,n2-.5)*(.22+audio*.06);
-
-    // Liquid bands
-    float liquid=
-      sin(p.x*5.5+t*1.2)+
-      sin(p.y*4.5-t*.8)+
-      sin((p.x+p.y)*3.5+t*.6);
-
-    liquid/=3.0;
-
-    // Metallic gradients
-    float shine=pow(abs(liquid),5.0);
-    float glow=smoothstep(.75,.0,length(uv));
-
-    vec3 dark=vec3(.02,.02,.03);
-    vec3 silver=vec3(.82,.84,.92);
-    vec3 chrome=vec3(.55,.62,.72);
-
-    vec3 col=mix(dark,chrome,smoothstep(-.4,.5,liquid));
-    col=mix(col,silver,shine*.95);
-
-    // Subtle rainbow reflections
-    vec3 rainbow=.08*vec3(
-      sin(liquid*3.+t*.4)*.5+.5,
-      sin(liquid*3.+t*.4+2.)*.5+.5,
-      sin(liquid*3.+t*.4+4.)*.5+.5
-    );
-
-    col+=rainbow*shine;
-
-    // Strong center reflections
-    col+=silver*pow(glow,2.)*.45;
-
-    // Film grain
-    float grain=(hash(gl_FragCoord.xy+uTime)-.5)*.04;
-    col+=grain;
-
-    // Contrast
-    col=pow(col,vec3(.9));
-
-    gl_FragColor=vec4(col,1.);
-  }`;
-
-  function compile(type,src){
-    const s=gl.createShader(type);
-    gl.shaderSource(s,src);
-    gl.compileShader(s);
-    return s;
-  }
-
-  function init(){
-    canvas=document.getElementById('liquidmetal-canvas');
-    if(!canvas)return;
-
-    gl=canvas.getContext('webgl',{alpha:false,antialias:true});
-    if(!gl)return;
-
-    const v=compile(gl.VERTEX_SHADER,vs);
-    const f=compile(gl.FRAGMENT_SHADER,fs);
-
-    program=gl.createProgram();
-    gl.attachShader(program,v);
-    gl.attachShader(program,f);
+    program = gl.createProgram();
+    gl.attachShader(program, v);
+    gl.attachShader(program, f);
     gl.linkProgram(program);
 
-    buffer=gl.createBuffer();
-    gl.bindBuffer(gl.ARRAY_BUFFER,buffer);
+    if(!gl.getProgramParameter(program, gl.LINK_STATUS)){
+      console.warn('Liquid metal shader link error:', gl.getProgramInfoLog(program));
+      return false;
+    }
+
+    buffer = gl.createBuffer();
+    gl.bindBuffer(gl.ARRAY_BUFFER, buffer);
     gl.bufferData(
       gl.ARRAY_BUFFER,
-      new Float32Array([-1,-1,3,-1,-1,3]),
+      new Float32Array([-1,-1, 3,-1, -1,3]),
       gl.STATIC_DRAW
     );
 
-    uniforms={
-      aPos:gl.getAttribLocation(program,'aPos'),
-      uResolution:gl.getUniformLocation(program,'uResolution'),
-      uTime:gl.getUniformLocation(program,'uTime'),
-      uBass:gl.getUniformLocation(program,'uBass'),
-      uMid:gl.getUniformLocation(program,'uMid'),
-      uHigh:gl.getUniformLocation(program,'uHigh'),
-      uSpeed:gl.getUniformLocation(program,'uSpeed')
+    uniforms = {
+      aPos: gl.getAttribLocation(program, 'aPos'),
+      time: gl.getUniformLocation(program, 'time'),
+      scale: gl.getUniformLocation(program, 'scale'),
+      resolution: gl.getUniformLocation(program, 'resolution'),
+      color1: gl.getUniformLocation(program, 'color1'),
+      color2: gl.getUniformLocation(program, 'color2'),
+      color3: gl.getUniformLocation(program, 'color3'),
+      color4: gl.getUniformLocation(program, 'color4'),
+      ax: gl.getUniformLocation(program, 'ax'),
+      ay: gl.getUniformLocation(program, 'ay'),
+      az: gl.getUniformLocation(program, 'az'),
+      aw: gl.getUniformLocation(program, 'aw'),
+      bx: gl.getUniformLocation(program, 'bx'),
+      by: gl.getUniformLocation(program, 'by'),
+      bass: gl.getUniformLocation(program, 'bass'),
+      mid: gl.getUniformLocation(program, 'mid'),
+      high: gl.getUniformLocation(program, 'high')
     };
+
+    booted = true;
+    return true;
   }
 
   function resize(){
-    if(!canvas||!gl)return;
+    if(!canvas || !gl) return;
 
-    const dpr=Math.min(window.devicePixelRatio||1,1.5);
+    var rect = canvas.getBoundingClientRect();
+    var cssW = Math.max(1, rect.width || window.innerWidth);
+    var cssH = Math.max(1, rect.height || window.innerHeight);
 
-    const w=Math.floor(window.innerWidth*dpr);
-    const h=Math.floor(window.innerHeight*dpr);
+    // crisp but safe
+    var dpr = Math.min(2, window.devicePixelRatio || 1);
+    var ww = Math.floor(cssW * dpr);
+    var hh = Math.floor(cssH * dpr);
 
-    if(canvas.width!==w||canvas.height!==h){
-      canvas.width=w;
-      canvas.height=h;
+    if(canvas.width !== ww || canvas.height !== hh){
+      canvas.width = ww;
+      canvas.height = hh;
     }
 
-    gl.viewport(0,0,w,h);
+    gl.viewport(0, 0, canvas.width, canvas.height);
   }
 
-  function tick(t,bass,mid,high,speed){
-    if(!gl)init();
-    if(!gl)return;
+  function setColors(){
+    if(!gl || lastTex === TEX) return;
+    lastTex = TEX;
+
+    var p = currentPalette ? currentPalette() : [
+      [255,255,255],
+      [255,175,175],
+      [0,153,255],
+      [170,255,255],
+      [255,255,255],
+      [0,0,0]
+    ];
+
+    // Source uses 4 colors: white, pink, blue, cyan.
+    // We map the selected texture into that 4-color model while keeping metallic contrast.
+    var c1 = [255,255,255];
+    var c2 = p[1] || p[0];
+    var c3 = p[3] || p[2] || p[0];
+    var c4 = p[5] || p[p.length-1] || p[0];
+
+    // For Rainbow, force rich true spectrum reflections.
+    if(TEX === 0){
+      c1 = [255,255,255];
+      c2 = [255,0,255];
+      c3 = [0,153,255];
+      c4 = [170,255,255];
+    }
+
+    var arr = [c1,c2,c3,c4];
+    for(var i=0;i<4;i++){
+      colorData[i*3+0] = arr[i][0] / 255;
+      colorData[i*3+1] = arr[i][1] / 255;
+      colorData[i*3+2] = arr[i][2] / 255;
+    }
+  }
+
+  function tick(t, bass, mid, high, speed){
+    if(!booted && !boot()) return;
 
     resize();
+    setColors();
 
     gl.useProgram(program);
-
-    gl.bindBuffer(gl.ARRAY_BUFFER,buffer);
+    gl.bindBuffer(gl.ARRAY_BUFFER, buffer);
     gl.enableVertexAttribArray(uniforms.aPos);
-    gl.vertexAttribPointer(uniforms.aPos,2,gl.FLOAT,false,0,0);
+    gl.vertexAttribPointer(uniforms.aPos, 2, gl.FLOAT, false, 0, 0);
 
-    gl.uniform2f(uniforms.uResolution,canvas.width,canvas.height);
-    gl.uniform1f(uniforms.uTime,t||0);
-    gl.uniform1f(uniforms.uBass,bass||0);
-    gl.uniform1f(uniforms.uMid,mid||0);
-    gl.uniform1f(uniforms.uHigh,high||0);
-    gl.uniform1f(uniforms.uSpeed,speed||0.7);
+    gl.uniform1f(uniforms.time, (t || 0) * 1000.0);
+    gl.uniform1f(uniforms.scale, 0.40 + (bass || 0) * 0.035);
+    gl.uniform2f(uniforms.resolution, canvas.width, canvas.height);
 
-    gl.drawArrays(gl.TRIANGLES,0,3);
+    gl.uniform3f(uniforms.color1, colorData[0], colorData[1], colorData[2]);
+    gl.uniform3f(uniforms.color2, colorData[3], colorData[4], colorData[5]);
+    gl.uniform3f(uniforms.color3, colorData[6], colorData[7], colorData[8]);
+    gl.uniform3f(uniforms.color4, colorData[9], colorData[10], colorData[11]);
+
+    // Reference defaults, with tiny audio motion.
+    gl.uniform1f(uniforms.ax, 5.0 + (high || 0) * 0.4);
+    gl.uniform1f(uniforms.ay, 7.0 + (mid || 0) * 0.4);
+    gl.uniform1f(uniforms.az, 9.0 + (bass || 0) * 0.35);
+    gl.uniform1f(uniforms.aw, 13.0 + (high || 0) * 0.35);
+    gl.uniform1f(uniforms.bx, 1.0);
+    gl.uniform1f(uniforms.by, 1.0);
+
+    gl.uniform1f(uniforms.bass, bass || 0);
+    gl.uniform1f(uniforms.mid, mid || 0);
+    gl.uniform1f(uniforms.high, high || 0);
+
+    gl.drawArrays(gl.TRIANGLES, 0, 3);
   }
 
-  return{
-    tick
+  return {
+    tick: tick,
+    resetPalette: function(){
+      lastTex = -1;
+    }
   };
 })();
 

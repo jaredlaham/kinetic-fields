@@ -507,7 +507,14 @@ body::after { content: ''; position: fixed; inset: 0; pointer-events: none; z-in
     </span>
     <div class="sg"><span>SPEED</span><input type="range" id="speedSl" min="1" max="10" value="7" step="1"></div>
     <div class="vd"></div>
-    <div class="sg"><span>SIZE</span><input type="range" id="sizeSl" min="1" max="10" value="5" step="1"></div>
+    <span class="row-lbl">SIZE</span>
+    <button class="t" id="sizeSmallBtn" onclick="setVisualSize('small')">SMALL</button>
+    <div class="vd"></div>
+    <button class="t" id="sizeMediumBtn" onclick="setVisualSize('medium')">MEDIUM</button>
+    <div class="vd"></div>
+    <button class="t" id="sizeLargeBtn" onclick="setVisualSize('large')">LARGE</button>
+    <div class="vd"></div>
+    <button class="t on" id="size3xBtn" onclick="setVisualSize('3x')">3X</button>
   </div>
 
   <!-- Bio pixel size row -->
@@ -724,7 +731,8 @@ var WIRE    = true;
 var DETAIL  = 3;
 var BLOOM   = 0;
 var CHAOS   = 4;
-var SIZE    = 5;  // 1-10 thickness/size
+var SIZE    = 16;  // visual scale; ASCII defaults large
+var VISUAL_SIZE_MODE = '3x';
 var BIO_PIXEL_SIZE = 1;  // 1-4 particle size
 var SPEED   = 7;
 var DENSITY = 3;
@@ -974,6 +982,26 @@ function setWire(w) {
   document.getElementById('wireBtn').classList.toggle('on',  w);
   document.getElementById('solidBtn').classList.toggle('on', !w);
 }
+
+function setVisualSize(mode) {
+  VISUAL_SIZE_MODE = mode;
+
+  if (mode === 'small') SIZE = 4;
+  else if (mode === 'medium') SIZE = 7;
+  else if (mode === 'large') SIZE = 12;
+  else SIZE = 16;
+
+  var s  = document.getElementById('sizeSmallBtn');
+  var m  = document.getElementById('sizeMediumBtn');
+  var l  = document.getElementById('sizeLargeBtn');
+  var x3 = document.getElementById('size3xBtn');
+
+  if (s)  s.classList.toggle('on', mode === 'small');
+  if (m)  m.classList.toggle('on', mode === 'medium');
+  if (l)  l.classList.toggle('on', mode === 'large');
+  if (x3) x3.classList.toggle('on', mode === '3x');
+}
+
 
 // ═══════════════════════════════════════════════════════════════════
 // WebGL init (deferred to load event)
@@ -1926,7 +1954,7 @@ if(MODE==='lightning'){
 if(MODE==='ascii'){
     // ASCII — performant shader-style character field.
     // Large cells + no per-character shadow = smooth in Framer.
-    // SIZE slider controls character scale.
+    // Size buttons control character scale. Default is LARGE.
     ctx.globalCompositeOperation='source-over';
     ctx.fillStyle='rgba(0,0,0,0.34)';
     ctx.fillRect(0,0,w,h);
@@ -1934,10 +1962,10 @@ if(MODE==='ascii'){
     var minDim = Math.min(w,h);
     var time = t * (0.38 + spd * 0.75 + high * 0.45);
     var chars = ' .:-=+*#%@';
-    var sizeNorm = Math.max(0.65, Math.min(2.2, SIZE / 5));
+    var sizeNorm = VISUAL_SIZE_MODE === 'small' ? 0.85 : (VISUAL_SIZE_MODE === 'medium' ? 1.35 : (VISUAL_SIZE_MODE === 'large' ? 2.15 : 3.25));
 
     // Higher SIZE = larger characters/fewer cells.
-    var cell = Math.max(13, Math.floor((IS_MOBILE ? 18 : 16) * sizeNorm * vizDpr));
+    var cell = Math.max(18, Math.floor((IS_MOBILE ? 22 : 20) * sizeNorm * vizDpr));
     var cols = Math.ceil(w / cell);
     var rows = Math.ceil(h / cell);
 
@@ -2019,18 +2047,18 @@ if(MODE==='ascii'){
 if(MODE==='plasma'){
     // Plasma — performant soft liquid shader-style field.
     // Less vivid, smoother, closer to the Framer shader reference.
-    // SIZE slider controls softness/detail: higher = larger, smoother blobs.
+    // Size buttons control softness/detail: larger = bigger, smoother blobs.
     ctx.globalCompositeOperation='source-over';
     ctx.fillStyle='rgba(0,0,0,0.20)';
     ctx.fillRect(0,0,w,h);
 
     var minDim = Math.min(w,h);
-    var time = t * (0.16 + spd * 0.34 + bass * 0.42);
-    var sizeNorm = Math.max(0.45, Math.min(2.2, SIZE / 5));
+    var time = t * (0.11 + spd * 0.24 + bass * 0.28);
+    var sizeNorm = VISUAL_SIZE_MODE === 'small' ? 0.75 : (VISUAL_SIZE_MODE === 'medium' ? 1.15 : (VISUAL_SIZE_MODE === 'large' ? 1.75 : 2.65));
 
     // Larger step = dramatically faster and smoother.
-    var step = Math.max(9, Math.floor((IS_MOBILE ? 15 : 12) * sizeNorm));
-    var radius = step * (2.15 + bass * 0.55);
+    var step = Math.max(5, Math.floor((IS_MOBILE ? 8 : 6) * (0.15 + sizeNorm * 0.55)));
+    var radius = step * (3.85 + bass * 0.75);
     var amp = 0.82 + bass * 0.55 + mid * 0.22;
 
     ctx.globalCompositeOperation='lighter';
@@ -2057,9 +2085,9 @@ if(MODE==='plasma'){
         var q = 0.5 + 0.5 * Math.sin(v * 1.18 + time * 0.28);
 
         // Softer contrast, less vivid.
-        q = Math.pow(q, 1.18);
+        q = Math.pow(q, 0.92);
         var palettePos = (q * 0.72 + d * 0.20 + time * 0.025) % 1;
-        var alpha = 0.045 + q * 0.135 + bass * 0.035;
+        var alpha = 0.030 + q * 0.090 + bass * 0.022;
 
         // Vintage and fire can get harsh, so keep alpha low and let overlap build color.
         ctx.fillStyle = paletteColor(palettePos, alpha);
@@ -2110,7 +2138,7 @@ if(MODE==='plasma'){
       grad.addColorStop(1, 'rgba(0,0,0,0)');
 
       ctx.strokeStyle = grad;
-      ctx.lineWidth = minDim * (0.007 + bass * 0.006);
+      ctx.lineWidth = minDim * (0.004 + bass * 0.003);
 
       ctx.beginPath();
 
@@ -3417,6 +3445,7 @@ function animate(){
 }
 
 updateAutoVJStatus();
+setVisualSize('3x');
 setMode('ripple');
 animate();
 } // end initGL

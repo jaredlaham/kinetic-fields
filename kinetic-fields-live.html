@@ -3312,6 +3312,17 @@ var tieDyeSim = (function(){
   var _origSetTexTD=setTex;
   setTex=function(n){_origSetTexTD(n);if(typeof tieDyeSim!=='undefined')tieDyeSim.setColor(n);};
 })();
+
+// Expose controls for inline HTML onclick handlers
+window.setMode = setMode;
+window.transitionSetMode = transitionSetMode;
+window.cycleMode = cycleMode;
+window.setTex = setTex;
+window.setWire = setWire;
+window.setFluidColor = setFluidColor;
+window.setMetalType = setMetalType;
+window.setBioPixelSize = setBioPixelSize;
+
 </script>
 </body>
 </html>

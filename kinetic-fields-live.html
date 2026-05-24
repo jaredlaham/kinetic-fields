@@ -588,13 +588,12 @@ var TEXTURE_NAMES = ['RAINBOW','FIRE','ELECTRIC','PRISM','NEON','UV','VINTAGE'];
 
 var PALETTES = {
   rainbow: [
-    [35, 30, 170],
-    [40, 110, 255],
-    [50, 220, 255],
-    [90, 255, 180],
-    [255, 220, 90],
-    [255, 140, 60],
-    [255, 70, 180]
+    [255, 0, 0],      // Red — hue 0.00
+    [255, 255, 0],    // Yellow — hue 0.16
+    [0, 255, 0],      // Green — hue 0.33
+    [0, 255, 255],    // Cyan — hue 0.50
+    [0, 0, 255],      // Blue — hue 0.66
+    [255, 0, 255]     // Magenta — hue 0.83
   ],
   fire: [
     [0, 0, 0],
@@ -2507,29 +2506,71 @@ void main(){
   float bands = sin(p.x*2.1 + p.y*1.1 + n1*4.2 + n2*2.2 + n3*0.8);
   float dye = smoothstep(0.08, 0.92, 0.5 + 0.5*bands + fbm2(p*1.1+dtime)*0.18);
 
-  // 6 vivid contrasting color palettes (TEX 0-5)
-  // 0 RAINBOW: violet→cyan→yellow
-  vec3 col1 = vec3(0.5,0.0,1.0);
-  vec3 col2 = vec3(0.0,0.9,0.9);
-  vec3 col3 = vec3(1.0,0.95,0.0);
-  if(uTex < 1.5){
-    // 1 FIRE: deep red→orange→white-hot
-    col1=vec3(0.6,0.0,0.0); col2=vec3(1.0,0.3,0.0); col3=vec3(1.0,0.9,0.5);
+  // Shared seven-texture palette system for IRIS
+  // 0 Rainbow, 1 Fire, 2 Electric, 3 Prism, 4 Neon, 5 UV, 6 Vintage
+  vec3 c0;
+  vec3 c1;
+  vec3 c2;
+  vec3 c3;
+  vec3 c4;
+  vec3 c5;
+
+  if(uTex < 0.5){
+    // RAINBOW — true spectrum
+    c0=vec3(1.0,0.0,0.0);
+    c1=vec3(1.0,1.0,0.0);
+    c2=vec3(0.0,1.0,0.0);
+    c3=vec3(0.0,1.0,1.0);
+    c4=vec3(0.0,0.0,1.0);
+    c5=vec3(1.0,0.0,1.0);
+  } else if(uTex < 1.5){
+    // FIRE
+    c0=vec3(0.0,0.0,0.0);
+    c1=vec3(0.04,0.08,0.20);
+    c2=vec3(0.0,0.47,1.0);
+    c3=vec3(0.47,0.86,1.0);
+    c4=vec3(1.0,0.82,0.47);
+    c5=vec3(1.0,0.24,0.0);
   } else if(uTex < 2.5){
-    // 2 OCEAN: deep navy→teal→ice
-    col1=vec3(0.0,0.05,0.4); col2=vec3(0.0,0.6,0.7); col3=vec3(0.7,1.0,1.0);
+    // ELECTRIC
+    c0=vec3(0.02,0.0,0.08);
+    c1=vec3(0.14,0.08,0.35);
+    c2=vec3(0.27,0.86,1.0);
+    c3=vec3(0.78,1.0,0.31);
+    c4=vec3(1.0,1.0,0.31);
+    c5=vec3(1.0,0.16,0.0);
   } else if(uTex < 3.5){
-    // 3 NEON: black→hot pink→lime
-    col1=vec3(0.1,0.0,0.15); col2=vec3(1.0,0.0,0.6); col3=vec3(0.3,1.0,0.0);
+    // PRISM
+    c0=vec3(0.0,0.0,0.0);
+    c1=vec3(0.24,0.47,1.0);
+    c2=vec3(0.55,0.86,1.0);
+    c3=vec3(0.78,0.71,1.0);
+    c4=vec3(1.0,0.47,0.24);
+    c5=vec3(1.0,1.0,1.0);
   } else if(uTex < 4.5){
-    // 4 COSMIC: black→deep purple→gold
-    col1=vec3(0.05,0.0,0.15); col2=vec3(0.5,0.0,0.9); col3=vec3(1.0,0.8,0.1);
+    // NEON
+    c0=vec3(0.08,0.08,0.08);
+    c1=vec3(0.0,1.0,0.67);
+    c2=vec3(0.0,0.86,1.0);
+    c3=vec3(0.47,1.0,0.35);
+    c4=vec3(0.47,0.24,1.0);
+    c5=vec3(1.0,0.24,0.86);
   } else if(uTex < 5.5){
-    // 5 EMBER: black→crimson→bright orange
-    col1=vec3(0.05,0.0,0.0); col2=vec3(0.8,0.05,0.05); col3=vec3(1.0,0.55,0.1);
+    // UV
+    c0=vec3(0.0,0.0,0.0);
+    c1=vec3(0.27,0.0,0.51);
+    c2=vec3(0.47,0.0,1.0);
+    c3=vec3(0.0,0.86,1.0);
+    c4=vec3(1.0,0.0,0.86);
+    c5=vec3(1.0,1.0,0.31);
   } else {
-    // 6 UV: near-black navy→electric cyan+cobalt→hot magenta
-    col1=vec3(0.02,0.0,0.08); col2=vec3(0.48,0.0,0.9); col3=vec3(1.0,0.0,0.65);
+    // VINTAGE
+    c0=vec3(0.06,0.10,0.27);
+    c1=vec3(0.12,0.39,0.47);
+    c2=vec3(0.31,0.67,0.59);
+    c3=vec3(0.90,0.84,0.63);
+    c4=vec3(1.0,0.71,0.24);
+    c5=vec3(0.75,0.16,0.08);
   }
 
   // Tie-dye color blend with audio shift
@@ -2537,9 +2578,11 @@ void main(){
   float colorShift = audioLift * 0.45 + sin(uTime * 0.08) * 0.05;
   float t2 = fract(dye + colorShift);
   vec3 col;
-  if(t2 < 0.33)      col = mix(col1, col2, t2 * 3.0);
-  else if(t2 < 0.66) col = mix(col2, col3, (t2 - 0.33) * 3.0);
-  else               col = mix(col3, col1, (t2 - 0.66) * 3.0);
+  if(t2 < 0.20)      col = mix(c0, c1, t2 / 0.20);
+  else if(t2 < 0.40) col = mix(c1, c2, (t2 - 0.20) / 0.20);
+  else if(t2 < 0.60) col = mix(c2, c3, (t2 - 0.40) / 0.20);
+  else if(t2 < 0.80) col = mix(c3, c4, (t2 - 0.60) / 0.20);
+  else               col = mix(c4, c5, (t2 - 0.80) / 0.20);
 
   // Audio brightness: dramatic range
   col = pow(col, vec3(0.78));
@@ -2553,7 +2596,7 @@ void main(){
   // Glow halo
   float glowDist = smoothstep(orbR + 0.55, orbR + 0.02, dist);
   float haloMask = glowDist * (1.0 - mask);
-  vec3 haloCol = col2 * (0.3 + audioLift * 0.5);
+  vec3 haloCol = c3 * (0.3 + audioLift * 0.5);
 
   vec3 finalCol = col * mask + haloCol * haloMask;
   float finalAlpha = mask + haloMask * 0.65;

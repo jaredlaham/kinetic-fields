@@ -506,7 +506,9 @@ body::after { content: ''; position: fixed; inset: 0; pointer-events: none; z-in
       <div class="vd"></div>
       <div class="sg"><span>DENSITY</span><input type="range" id="fDensitySl" min="1" max="100" value="28" step="1"></div>
     </span>
-    <div class="sg"><span>SPEED</span><input type="range" id="speedSl" min="1" max="10" value="7" step="1"></div>
+    <div class="sg" id="liquid-shape-ui"><span>SHAPE</span><input type="range" id="shapeSl" min="1" max="10" value="5" step="1"></div>
+    <div class="vd" id="liquid-shape-div"></div>
+    <div class="sg"><span>SPEED</span><input type="range" id="speedSl" min="1" max="10" value="3" step="1"></div>
     <div class="vd"></div>
     <span class="row-lbl">SIZE</span>
     <button class="t" id="sizeSmallBtn" onclick="setVisualSize('small')">SMALL</button>
@@ -732,10 +734,11 @@ var WIRE    = true;
 var DETAIL  = 3;
 var BLOOM   = 0;
 var CHAOS   = 4;
+var SHAPE = 5; // Liquid Metal shape/warp amount
 var SIZE    = 16;  // visual scale; ASCII defaults large
 var VISUAL_SIZE_MODE = '3x';
 var BIO_PIXEL_SIZE = 1;  // 1-4 particle size
-var SPEED   = 7;
+var SPEED  = 3;
 var DENSITY = 3;
 
 var autoVJActive = false;
@@ -2092,6 +2095,8 @@ window.addEventListener('load', function() {
     fluid.setDensity(Math.floor(parseInt(e.target.value) / 100 * (IS_MOBILE?18000:44000) + (IS_MOBILE?6000:8000))); // mobile 6k..24k, desktop 8k..52k
   });
   document.getElementById('detailSl').addEventListener('input',  function(e){ DETAIL  = parseInt(e.target.value); });
+  var shapeSl = document.getElementById('shapeSl');
+  if (shapeSl) shapeSl.addEventListener('input', function(e){ SHAPE = parseInt(e.target.value); });
   document.getElementById('speedSl').addEventListener('input',   function(e){ SPEED   = parseInt(e.target.value); });
   var legacySizeSl = document.getElementById('sizeSl');
   if (legacySizeSl) legacySizeSl.addEventListener('input', function(e){ SIZE = parseInt(e.target.value); });
@@ -3006,10 +3011,10 @@ var t0=performance.now(), frame=0;
 
 
 
+
 // ═══════════════════════════════════════════════════════════════════
 // LIQUID METAL WEBGL MODE — CodePen cheapNoise-style shader
-// Closely mirrors Lea Rosema / shader-art example structure:
-// cheapNoise + warped noise vectors + 4-color reflective mixing.
+// Speed + Shape + Size UI enabled.
 // ═══════════════════════════════════════════════════════════════════
 var liquidMetalGLMode = (function(){
   var canvas = null;
@@ -3049,10 +3054,12 @@ uniform float by;
 uniform float bass;
 uniform float mid;
 uniform float high;
+uniform float shape;
 
-const float PI = 3.141592654;
+float hash(vec2 p){
+  return fract(sin(dot(p,vec2(127.1,311.7)))*43758.5453123);
+}
 
-// Same concept as the reference: a compact sin/cos cheapNoise field.
 float cheapNoise(vec3 stp) {
   vec3 p = vec3(stp.st, stp.p);
   vec4 a = vec4(ax, ay, az, aw);
@@ -3074,15 +3081,13 @@ float grain(vec2 p){
 
 void main(){
   vec2 aR = vec2(resolution.x / resolution.y, 1.0);
-
-  // Fullscreen, crisp, not blurry.
   vec2 st = vUv * aR * scale;
 
   float S = sin(time * 0.005);
   float C = cos(time * 0.005);
 
-  // Audio subtly increases flow complexity without destroying the reference look.
-  float audio = bass * 0.65 + mid * 0.25 + high * 0.10;
+  float audio = bass * 0.50 + mid * 0.20 + high * 0.08;
+  float shapeMix = mix(0.70, 1.55, clamp(shape,0.0,1.0));
 
   vec2 v1 = vec2(
     cheapNoise(vec3(st, 2.0)),
@@ -3090,50 +3095,31 @@ void main(){
   );
 
   vec2 v2 = vec2(
-    cheapNoise(vec3(st + bx * v1 + vec2(C * 1.7, S * 9.2), 0.15 * time + audio * 0.35)),
-    cheapNoise(vec3(st + by * v1 + vec2(S * 8.3, C * 2.8), 0.126 * time + audio * 0.28))
+    cheapNoise(vec3(st + bx * v1 * shapeMix + vec2(C * 1.7, S * 9.2), 0.15 * time + audio * 0.22)),
+    cheapNoise(vec3(st + by * v1 * shapeMix + vec2(S * 8.3, C * 2.8), 0.126 * time + audio * 0.18))
   );
 
   float n = 0.5 + 0.5 * cheapNoise(vec3(st + v2, 0.0));
 
-  // Match source formula closely, then push contrast/crispness.
-  vec3 color = mix(
-    color1,
-    color2,
-    clamp((n*n) * 8.0, 0.0, 1.0)
-  );
-
-  color = mix(
-    color,
-    color3,
-    clamp(length(v1), 0.0, 1.0)
-  );
-
-  color = mix(
-    color,
-    color4,
-    clamp(abs(v2.x), 0.0, 1.0)
-  );
+  vec3 color = mix(color1, color2, clamp((n*n) * 8.0, 0.0, 1.0));
+  color = mix(color, color3, clamp(length(v1) * 0.92, 0.0, 1.0));
+  color = mix(color, color4, clamp(abs(v2.x) * 0.95, 0.0, 1.0));
 
   color /= n*n + n * 7.0;
 
-  // Make it richer and sharper than the prior soft version.
-  color = pow(color, vec3(0.72));
-  color *= 1.25 + audio * 0.25;
+  color = pow(color, vec3(0.70));
+  color *= 1.22 + audio * 0.18;
 
-  // Add glossy contrast lines from field gradient.
   float edge = abs(cheapNoise(vec3(st + v2 * 0.55, time * 0.05)));
-  float spec = pow(clamp(edge, 0.0, 1.0), 8.0);
-  color += vec3(1.0) * spec * 0.22;
+  float spec = pow(clamp(edge, 0.0, 1.0), 9.0);
+  color += vec3(1.0) * spec * 0.18;
 
-  // Subtle film grain only.
   float g = grain(gl_FragCoord.xy + floor(time * 0.15));
-  color += (g - 0.5) * 0.025;
+  color += (g - 0.5) * 0.020;
 
-  // Vignette, very light.
   vec2 centered = vUv * 2.0 - 1.0;
   float vig = smoothstep(1.45, 0.30, length(centered));
-  color *= 0.78 + vig * 0.34;
+  color *= 0.80 + vig * 0.32;
 
   gl_FragColor = vec4(clamp(color, 0.0, 1.0), 1.0);
 }`;
@@ -3142,12 +3128,10 @@ void main(){
     var sh = gl.createShader(type);
     gl.shaderSource(sh, src);
     gl.compileShader(sh);
-
     if(!gl.getShaderParameter(sh, gl.COMPILE_STATUS)){
       console.warn('Liquid metal shader compile error:', gl.getShaderInfoLog(sh));
       return null;
     }
-
     return sh;
   }
 
@@ -3181,11 +3165,7 @@ void main(){
 
     buffer = gl.createBuffer();
     gl.bindBuffer(gl.ARRAY_BUFFER, buffer);
-    gl.bufferData(
-      gl.ARRAY_BUFFER,
-      new Float32Array([-1,-1, 3,-1, -1,3]),
-      gl.STATIC_DRAW
-    );
+    gl.bufferData(gl.ARRAY_BUFFER, new Float32Array([-1,-1, 3,-1, -1,3]), gl.STATIC_DRAW);
 
     uniforms = {
       aPos: gl.getAttribLocation(program, 'aPos'),
@@ -3204,7 +3184,8 @@ void main(){
       by: gl.getUniformLocation(program, 'by'),
       bass: gl.getUniformLocation(program, 'bass'),
       mid: gl.getUniformLocation(program, 'mid'),
-      high: gl.getUniformLocation(program, 'high')
+      high: gl.getUniformLocation(program, 'high'),
+      shape: gl.getUniformLocation(program, 'shape')
     };
 
     booted = true;
@@ -3214,11 +3195,8 @@ void main(){
   function resize(){
     if(!canvas || !gl) return;
 
-    var rect = canvas.getBoundingClientRect();
-    var cssW = Math.max(1, rect.width || window.innerWidth);
-    var cssH = Math.max(1, rect.height || window.innerHeight);
-
-    // crisp but safe
+    var cssW = Math.max(1, window.innerWidth);
+    var cssH = Math.max(1, window.innerHeight);
     var dpr = Math.min(2, window.devicePixelRatio || 1);
     var ww = Math.floor(cssW * dpr);
     var hh = Math.floor(cssH * dpr);
@@ -3237,21 +3215,18 @@ void main(){
 
     var p = currentPalette ? currentPalette() : [
       [255,255,255],
-      [255,175,175],
+      [255,0,255],
       [0,153,255],
       [170,255,255],
       [255,255,255],
       [0,0,0]
     ];
 
-    // Source uses 4 colors: white, pink, blue, cyan.
-    // We map the selected texture into that 4-color model while keeping metallic contrast.
     var c1 = [255,255,255];
     var c2 = p[1] || p[0];
     var c3 = p[3] || p[2] || p[0];
     var c4 = p[5] || p[p.length-1] || p[0];
 
-    // For Rainbow, force rich true spectrum reflections.
     if(TEX === 0){
       c1 = [255,255,255];
       c2 = [255,0,255];
@@ -3260,6 +3235,7 @@ void main(){
     }
 
     var arr = [c1,c2,c3,c4];
+
     for(var i=0;i<4;i++){
       colorData[i*3+0] = arr[i][0] / 255;
       colorData[i*3+1] = arr[i][1] / 255;
@@ -3278,8 +3254,18 @@ void main(){
     gl.enableVertexAttribArray(uniforms.aPos);
     gl.vertexAttribPointer(uniforms.aPos, 2, gl.FLOAT, false, 0, 0);
 
-    gl.uniform1f(uniforms.time, (t || 0) * 1000.0);
-    gl.uniform1f(uniforms.scale, 0.40 + (bass || 0) * 0.035);
+    var speedNorm = Math.max(0.0, Math.min(1.0, speed || 0.3));
+    var liquidTimeScale = 0.055 + speedNorm * 0.14 + (bass || 0) * 0.018;
+    gl.uniform1f(uniforms.time, (t || 0) * liquidTimeScale * 1000.0);
+
+    var sizeMode = (typeof VISUAL_SIZE_MODE !== 'undefined') ? VISUAL_SIZE_MODE : 'medium';
+    var sizeScale = 0.46;
+    if(sizeMode === 'small') sizeScale = 0.72;
+    else if(sizeMode === 'medium') sizeScale = 0.52;
+    else if(sizeMode === 'large') sizeScale = 0.38;
+    else if(sizeMode === '3x') sizeScale = 0.25;
+
+    gl.uniform1f(uniforms.scale, sizeScale + (bass || 0) * 0.012);
     gl.uniform2f(uniforms.resolution, canvas.width, canvas.height);
 
     gl.uniform3f(uniforms.color1, colorData[0], colorData[1], colorData[2]);
@@ -3287,13 +3273,15 @@ void main(){
     gl.uniform3f(uniforms.color3, colorData[6], colorData[7], colorData[8]);
     gl.uniform3f(uniforms.color4, colorData[9], colorData[10], colorData[11]);
 
-    // Reference defaults, with tiny audio motion.
-    gl.uniform1f(uniforms.ax, 5.0 + (high || 0) * 0.4);
-    gl.uniform1f(uniforms.ay, 7.0 + (mid || 0) * 0.4);
-    gl.uniform1f(uniforms.az, 9.0 + (bass || 0) * 0.35);
-    gl.uniform1f(uniforms.aw, 13.0 + (high || 0) * 0.35);
-    gl.uniform1f(uniforms.bx, 1.0);
-    gl.uniform1f(uniforms.by, 1.0);
+    var shapeNorm = Math.max(0.0, Math.min(1.0, ((typeof SHAPE !== 'undefined' ? SHAPE : 5) - 1) / 9));
+
+    gl.uniform1f(uniforms.ax, 5.0 + shapeNorm * 2.5);
+    gl.uniform1f(uniforms.ay, 7.0 + shapeNorm * 2.5);
+    gl.uniform1f(uniforms.az, 9.0 + shapeNorm * 3.0);
+    gl.uniform1f(uniforms.aw, 13.0 + shapeNorm * 3.0);
+    gl.uniform1f(uniforms.bx, 0.7 + shapeNorm * 0.8);
+    gl.uniform1f(uniforms.by, 0.7 + shapeNorm * 0.8);
+    gl.uniform1f(uniforms.shape, shapeNorm);
 
     gl.uniform1f(uniforms.bass, bass || 0);
     gl.uniform1f(uniforms.mid, mid || 0);
@@ -3304,9 +3292,7 @@ void main(){
 
   return {
     tick: tick,
-    resetPalette: function(){
-      lastTex = -1;
-    }
+    resetPalette: function(){ lastTex = -1; }
   };
 })();
 

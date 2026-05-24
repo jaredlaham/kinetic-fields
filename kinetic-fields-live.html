@@ -72,50 +72,57 @@ input[type=range]::-moz-range-thumb { width: 22px; height: 22px;
 
 #auto-vj-status {
   position: fixed;
-  top: 20px;
+  top: 62px;
   left: 50%;
   right: auto;
   transform: translateX(-50%);
-  z-index: 31;
+  z-index: 25;
 
   display: inline-flex;
   align-items: center;
   justify-content: center;
 
   width: 168px;
-  height: 34px;
+  height: 32px;
   padding: 0 14px;
 
   border-radius: 999px;
+  border: 1px solid rgba(255,255,255,0.12);
   background: rgba(0,0,0,0.55);
   backdrop-filter: blur(14px);
   -webkit-backdrop-filter: blur(14px);
-  border: 1px solid rgba(255,255,255,0.12);
 
-  font-family: Inter, system-ui, sans-serif;
-  font-size: 10px;
+  font-family: Inter, system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+  font-size: 8px;
   font-weight: 700;
   line-height: 1;
   letter-spacing: 0.14em;
-  text-transform: uppercase;
   text-align: center;
   white-space: nowrap;
+  text-transform: uppercase;
 
   color: rgba(255,255,255,0.45);
   cursor: pointer;
-  pointer-events: auto !important;
+  pointer-events: auto;
 
-  transition:
-    opacity 0.25s ease,
-    color 0.25s ease,
-    border-color 0.25s ease,
-    box-shadow 0.25s ease,
-    background 0.25s ease;
+  transition: opacity 0.35s, color 0.25s, border-color 0.25s, box-shadow 0.25s, background 0.25s;
 }
 #auto-vj-status.active {
   color: rgba(80,255,160,0.95);
   border-color: rgba(80,255,160,0.35);
   box-shadow: 0 0 20px rgba(80,255,160,0.15);
+}
+#mode-transition {
+  position: fixed;
+  inset: 0;
+  z-index: 19;
+  pointer-events: none;
+  background: #000;
+  opacity: 0;
+  transition: opacity 180ms ease;
+}
+#mode-transition.active {
+  opacity: 0.42;
 }
 
 /* Mobile text-color toggle button */
@@ -221,48 +228,127 @@ body::after { content: ''; position: fixed; inset: 0; pointer-events: none; z-in
 #ui .row:first-child::-webkit-scrollbar { display: none; }
 
 @media (max-width: 768px) {
-  
-#auto-vj-status {
-  position: fixed;
-  top: 20px;
-  left: 50%;
-  right: auto;
-  transform: translateX(-50%);
-  z-index: 31;
+  #auto-vj-status {
+    top: calc(env(safe-area-inset-top, 0px) + 52px);
+    font-size: 7px;
+    padding: 6px 10px;
+  }
 
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
+  #wordmark { cursor: pointer; -webkit-tap-highlight-color: transparent;
+    top: 14px;
+    left: 14px;
+    font-size: 13px;
+    opacity: 0.8;
+  }
 
-  width: 168px;
-  height: 34px;
-  padding: 0 14px;
+  #freq-wrap {
+    top: 14px;
+    right: 14px;
+  }
 
-  border-radius: 999px;
-  background: rgba(0,0,0,0.55);
-  backdrop-filter: blur(14px);
-  -webkit-backdrop-filter: blur(14px);
-  border: 1px solid rgba(255,255,255,0.12);
+  #freq-label {
+    font-size: 7px;
+    letter-spacing: 0.14em;
+  }
 
-  font-family: Inter, system-ui, sans-serif;
-  font-size: 10px;
-  font-weight: 700;
-  line-height: 1;
-  letter-spacing: 0.14em;
-  text-transform: uppercase;
-  text-align: center;
-  white-space: nowrap;
+  #freq-val {
+    font-size: 14px;
+  }
 
-  color: rgba(255,255,255,0.45);
-  cursor: pointer;
-  pointer-events: auto !important;
+  #mic-wrap {
+    top: 12px;
+    gap: 6px;
+  }
 
-  transition:
-    opacity 0.25s ease,
-    color 0.25s ease,
-    border-color 0.25s ease,
-    box-shadow 0.25s ease,
-    background 0.25s ease;
+  #mic-btn {
+    font-size: 7px;
+    padding: 7px 12px;
+  }
+
+  #ui {
+    padding-bottom: calc(env(safe-area-inset-bottom, 16px) + 16px);
+    gap: 5px;
+    max-height: calc(65dvh - env(safe-area-inset-bottom, 16px));
+    overflow-y: auto;
+    -webkit-overflow-scrolling: touch;
+    pointer-events: auto;
+  }
+
+  #mobile-hide-btn {
+    display: flex;
+  }
+
+  #mobile-text-color-btn {
+    display: flex;
+  }
+
+  /* All rows scroll horizontally — no wrapping, buttons stay on one line */
+  .row {
+    max-width: calc(100vw - 16px);
+    padding: 5px 7px;
+    border-radius: 22px;
+    gap: 2px;
+    flex-wrap: nowrap;
+    overflow-x: auto;
+    overflow-y: visible;
+    justify-content: flex-start;
+    scrollbar-width: none;
+    -webkit-overflow-scrolling: touch;
+  }
+  .row::-webkit-scrollbar { display: none; }
+
+  .row-lbl {
+    font-size: 6px;
+    letter-spacing: 0.14em;
+    padding: 0 4px;
+  }
+
+  .t {
+    font-size: 9px;
+    padding: 6px 7px;
+    letter-spacing: 0.02em;
+  }
+
+  .vd {
+    height: 11px;
+    margin: 0 1px;
+  }
+
+  .sg {
+    gap: 4px;
+    padding: 1px 3px;
+  }
+
+  .sg span {
+    font-size: 6px;
+    min-width: 34px;
+  }
+
+  .sg .val {
+    min-width: 24px;
+    font-size: 7px;
+  }
+
+  input[type=range] {
+    width: 54px;
+    height: 20px;
+  }
+
+  input[type=range]::-webkit-slider-thumb {
+    width: 26px;
+    height: 26px;
+    margin-top: -12px;
+  }
+
+  input[type=range]::-moz-range-thumb {
+    width: 26px;
+    height: 26px;
+  }
+
+  #center-fields {
+    -webkit-text-stroke: 0.75px rgba(255, 255, 255, 0.04);
+    line-height: 0.82;
+  }
 }
 
 @media (max-width: 480px) {
@@ -313,73 +399,16 @@ body::after { content: ''; position: fixed; inset: 0; pointer-events: none; z-in
   }
 }
 
-
-/* Mode transition fade */
-#mode-transition {
-  position: fixed;
-  inset: 0;
-  z-index: 18;
-  pointer-events: none;
-  background: #000;
-  opacity: 0;
-  transition: opacity 260ms ease;
-}
-#mode-transition.active {
-  opacity: 0.62;
-}
-#auto-vj-status {
-  position: fixed;
-  top: 20px;
-  left: 50%;
-  right: auto;
-  transform: translateX(-50%);
-  z-index: 31;
-
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-
-  width: 168px;
-  height: 34px;
-  padding: 0 14px;
-
-  border-radius: 999px;
-  background: rgba(0,0,0,0.55);
-  backdrop-filter: blur(14px);
-  -webkit-backdrop-filter: blur(14px);
-  border: 1px solid rgba(255,255,255,0.12);
-
-  font-family: Inter, system-ui, sans-serif;
-  font-size: 10px;
-  font-weight: 700;
-  line-height: 1;
-  letter-spacing: 0.14em;
-  text-transform: uppercase;
-  text-align: center;
-  white-space: nowrap;
-
-  color: rgba(255,255,255,0.45);
-  cursor: pointer;
-  pointer-events: auto !important;
-
-  transition:
-    opacity 0.25s ease,
-    color 0.25s ease,
-    border-color 0.25s ease,
-    box-shadow 0.25s ease,
-    background 0.25s ease;
-}
-
 </style>
 </head>
 <body>
+<div id="mode-transition"></div>
 <canvas id="glc"></canvas>
 <canvas id="viz-canvas" style="position:fixed;inset:0;width:100%;height:100%;display:none;pointer-events:none;z-index:8;background:transparent;contain:strict;touch-action:none"></canvas>
 <canvas id="fluid-canvas" style="position:fixed;inset:0;width:100%;height:100%;display:none;pointer-events:none;z-index:2;contain:strict;touch-action:none"></canvas>
 <canvas id="bio-canvas"   style="position:fixed;inset:0;width:100%;height:100%;display:none;z-index:8;contain:strict;touch-action:none"></canvas>
 <canvas id="tiedye-canvas" style="position:fixed;inset:0;width:100%;height:100%;display:none;z-index:8;contain:strict;touch-action:none"></canvas>
 <canvas id="pulse-canvas" style="position:fixed;inset:0;width:100%;height:100%;display:none;z-index:8;contain:strict;touch-action:none"></canvas>
-<div id="mode-transition"></div>
 <div id="wordmark" style="cursor:pointer;user-select:none" onclick="toggleFieldsColor()">kinetic fields live</div>
 <div id="center-fields">kinetic fields</div>
 <div id="freq-wrap"><div id="freq-label">FREQUENCY</div><div id="freq-val">—</div></div>
@@ -403,30 +432,30 @@ body::after { content: ''; position: fixed; inset: 0; pointer-events: none; z-in
   <!-- Row 1: MODE -->
   <div class="row">
     <span class="row-lbl">MODE</span>
-    <button class="t"    id="btn-orb"    onclick="transitionSetMode('orb')">⬡ ORB BLOB</button>
+    <button class="t"    id="btn-orb"    onclick="setMode('orb')">⬡ ORB BLOB</button>
     <div class="vd"></div>
-    <button class="t"    id="btn-metal"  onclick="transitionSetMode('metal')">⬢ METAL SPHERE</button>
+    <button class="t"    id="btn-metal"  onclick="setMode('metal')">⬢ METAL SPHERE</button>
     <div class="vd"></div>
-    <button class="t"    id="btn-ripple" onclick="transitionSetMode('ripple')">⌁ FLUID</button>
+    <button class="t"    id="btn-ripple" onclick="setMode('ripple')">⌁ FLUID</button>
     <div class="vd"></div>
-    <button class="t"    id="btn-bio"    onclick="transitionSetMode('bio')">⋯ BIOLUMINESCENCE</button>
+    <button class="t"    id="btn-bio"    onclick="setMode('bio')">⋯ BIOLUMINESCENCE</button>
     <div class="vd"></div>
-    <button class="t"    id="btn-osc" onclick="transitionSetMode('osc')">⌇ OSC</button>
+    <button class="t"    id="btn-osc" onclick="setMode('osc')">⌇ OSC</button>
     <div class="vd"></div>
-    <button class="t"    id="btn-fft" onclick="transitionSetMode('fft')">⌉ FFT</button>
+    <button class="t"    id="btn-fft" onclick="setMode('fft')">⌉ FFT</button>
 
     <div class="vd"></div>
-    <button class="t"    id="btn-lissajous" onclick="transitionSetMode('lissajous')">⌀ ARC REACTOR</button>
+    <button class="t"    id="btn-lissajous" onclick="setMode('lissajous')">⌀ ARC REACTOR</button>
     <div class="vd"></div>
-    <button class="t"    id="btn-retrowave" onclick="transitionSetMode('retrowave')">⌗ RETRO</button>
+    <button class="t"    id="btn-retrowave" onclick="setMode('retrowave')">⌗ RETRO</button>
     <div class="vd"></div>
-    <button class="t"    id="btn-star" onclick="transitionSetMode('star')">✧ STAR</button>
+    <button class="t"    id="btn-star" onclick="setMode('star')">✧ STAR</button>
     <div class="vd"></div>
-    <button class="t"    id="btn-iris"  onclick="transitionSetMode('iris')">⌬ IRIS</button>
+    <button class="t"    id="btn-iris"  onclick="setMode('iris')">⌬ IRIS</button>
     <div class="vd"></div>
-    <button class="t"    id="btn-pulse" onclick="transitionSetMode('pulse')">◉ PULSE</button>
+    <button class="t"    id="btn-pulse" onclick="setMode('pulse')">◉ PULSE</button>
     <div class="vd"></div>
-    <button class="t"    id="btn-tiedye" onclick="transitionSetMode('tiedye')">◈ TIE DYE</button>
+    <button class="t"    id="btn-tiedye" onclick="setMode('tiedye')">◈ TIE DYE</button>
   </div>
 
   <!-- Row 2: TEXTURE — shared across orb + ripple -->
@@ -2346,7 +2375,7 @@ function band(arr,s,e){var sum=0;for(var i=s;i<e;i++)sum+=arr[i];return sum/((e-
 var uiVisible = true;
 function toggleUIVisibility() {
   uiVisible = !uiVisible;
-  ['ui','mic-wrap','wordmark','freq-wrap','mobile-text-color-btn'].forEach(function(id){
+  ['ui','mic-wrap','wordmark','freq-wrap','mobile-text-color-btn','auto-vj-status'].forEach(function(id){
     var el=document.getElementById(id);
     if(el)el.classList.toggle('ui-hidden', !uiVisible);
   });
@@ -3313,15 +3342,102 @@ var tieDyeSim = (function(){
   setTex=function(n){_origSetTexTD(n);if(typeof tieDyeSim!=='undefined')tieDyeSim.setColor(n);};
 })();
 
-// Expose controls for inline HTML onclick handlers
-window.setMode = setMode;
-window.transitionSetMode = transitionSetMode;
-window.cycleMode = cycleMode;
-window.setTex = setTex;
-window.setWire = setWire;
-window.setFluidColor = setFluidColor;
-window.setMetalType = setMetalType;
-window.setBioPixelSize = setBioPixelSize;
+// ═══════════════════════════════════════════════════════════════════
+// SAFE MODE CONTROLS — click-safe transitions, Auto VJ click, arrows
+// ═══════════════════════════════════════════════════════════════════
+(function(){
+  var directSetMode = window.setMode;
+  var transitionTimerA = null;
+  var transitionTimerB = null;
+  var transitioning = false;
+
+  function getOverlay(){
+    return document.getElementById('mode-transition');
+  }
+
+  window.setMode = function(nextMode){
+    if (typeof directSetMode !== 'function') return;
+
+    var overlay = getOverlay();
+
+    if (!overlay || transitioning) {
+      directSetMode(nextMode);
+      return;
+    }
+
+    transitioning = true;
+    overlay.classList.add('active');
+
+    clearTimeout(transitionTimerA);
+    clearTimeout(transitionTimerB);
+
+    transitionTimerA = setTimeout(function(){
+      directSetMode(nextMode);
+
+      transitionTimerB = setTimeout(function(){
+        overlay.classList.remove('active');
+        transitioning = false;
+      }, 90);
+    }, 90);
+  };
+
+  window.cycleMode = function(direction){
+    var modes = window.autoVJModes || ['ripple','bio','orb','metal','osc','fft','lissajous','retrowave','star','iris','pulse','tiedye'];
+    var currentIndex = modes.indexOf(window.MODE);
+
+    if (currentIndex < 0) currentIndex = 0;
+
+    var nextIndex = currentIndex + direction;
+
+    if (nextIndex < 0) nextIndex = modes.length - 1;
+    if (nextIndex >= modes.length) nextIndex = 0;
+
+    window.autoVJIndex = nextIndex;
+    window.setMode(modes[nextIndex]);
+  };
+
+  window.addEventListener('DOMContentLoaded', function(){
+    var autoBtn = document.getElementById('auto-vj-status');
+
+    if (autoBtn) {
+      autoBtn.setAttribute('role', 'button');
+      autoBtn.setAttribute('tabindex', '0');
+
+      autoBtn.addEventListener('click', function(e){
+        e.preventDefault();
+        e.stopPropagation();
+
+        if (typeof window.toggleAutoVJ === 'function') {
+          window.toggleAutoVJ();
+        }
+      });
+
+      autoBtn.addEventListener('keydown', function(e){
+        if (e.key === 'Enter' || e.key === ' ') {
+          e.preventDefault();
+          if (typeof window.toggleAutoVJ === 'function') {
+            window.toggleAutoVJ();
+          }
+        }
+      });
+    }
+  });
+
+  document.addEventListener('keydown', function(e){
+    var tag = (e.target && e.target.tagName) ? e.target.tagName.toLowerCase() : '';
+    if(tag === 'input' || tag === 'textarea' || tag === 'select') return;
+
+    if (e.key === 'ArrowRight') {
+      e.preventDefault();
+      window.cycleMode(1);
+    }
+
+    if (e.key === 'ArrowLeft') {
+      e.preventDefault();
+      window.cycleMode(-1);
+    }
+  });
+})();
 
 </script>
 </body>

@@ -405,6 +405,7 @@ body::after { content: ''; position: fixed; inset: 0; pointer-events: none; z-in
 <div id="mode-transition"></div>
 <canvas id="glc"></canvas>
 <canvas id="viz-canvas" style="position:fixed;inset:0;width:100%;height:100%;display:none;pointer-events:none;z-index:8;background:transparent;contain:strict;touch-action:none"></canvas>
+<canvas id="liquidmetal-canvas" style="position:fixed;inset:0;width:100%;height:100%;display:none;pointer-events:none;z-index:8;background:#000;contain:strict;touch-action:none"></canvas>
 <canvas id="fluid-canvas" style="position:fixed;inset:0;width:100%;height:100%;display:none;pointer-events:none;z-index:2;contain:strict;touch-action:none"></canvas>
 <canvas id="bio-canvas"   style="position:fixed;inset:0;width:100%;height:100%;display:none;z-index:8;contain:strict;touch-action:none"></canvas>
 <canvas id="tiedye-canvas" style="position:fixed;inset:0;width:100%;height:100%;display:none;z-index:8;contain:strict;touch-action:none"></canvas>
@@ -741,7 +742,7 @@ var autoVJActive = false;
 var autoVJTimer = null;
 var autoVJIndex = 0;
 var autoVJIntervalMs = 12000;
-var autoVJModes = ['ripple','liquidmetal','lightning','ascii','bio','orb','metal','osc','fft','lissajous','retrowave','star','iris','pulse','tiedye'];
+var autoVJModes = ['ripple','lightning','ascii','bio','orb','metal','osc','fft','lissajous','retrowave','star','iris','pulse','tiedye'];
 // Metal sphere params
 var M_NOISE   = 1.16;
 var M_DISP    = 0.45;
@@ -763,7 +764,7 @@ var micGainNode = null;
 function setMode(m) {
   MODE = m;
 
-  var twoDModes = ['osc','fft','lissajous','retrowave','star','pulse','liquidmetal','lightning','ascii'];
+  var twoDModes = ['osc','fft','lissajous','retrowave','star','pulse','lightning','ascii'];
   var is2D = twoDModes.indexOf(m) !== -1;
 
   var modeButtonIds = {
@@ -816,7 +817,7 @@ function setMode(m) {
   if (shapeLbl) shapeLbl.textContent = m === 'metal' ? 'MATERIAL' : (is2D ? 'VISUALIZER' : 'SHAPE');
 
   // iris/bio/tiedye use their own canvas — hide glc for those + 2D modes
-  if (glCanvas) glCanvas.style.display = (is2D || m === 'bio' || m === 'tiedye') ? 'none' : 'block';
+  if (glCanvas) glCanvas.style.display = (is2D || m === 'bio' || m === 'tiedye' || m === 'liquidmetal') ? 'none' : 'block';
 
   if (vizCanvas) {
     vizCanvas.style.display = is2D ? 'block' : 'none';
@@ -839,6 +840,8 @@ function setMode(m) {
 
   var tieDyeCanvas = document.getElementById('tiedye-canvas');
   if (tieDyeCanvas) tieDyeCanvas.style.display = m === 'tiedye' ? 'block' : 'none';
+  var liquidMetalCanvas = document.getElementById('liquidmetal-canvas');
+  if (liquidMetalCanvas) liquidMetalCanvas.style.display = m === 'liquidmetal' ? 'block' : 'none';
   try {
     if (m === 'tiedye') { if (typeof tieDyeSim !== 'undefined') tieDyeSim.show(); }
     else                { if (typeof tieDyeSim !== 'undefined') tieDyeSim.hide(); }
@@ -927,6 +930,8 @@ function setTex(n) {
 
   // Fluid engine behavior preset. Color family is unified in all 2D modes.
   var fluidMap = ['auto','haxiomic','cosmic','acid','mono'];
+  if (typeof liquidMetalGLMode !== 'undefined' && liquidMetalGLMode.resetPalette) liquidMetalGLMode.resetPalette();
+
   if (typeof fluid !== 'undefined' && fluid && fluid.setColor) {
     fluid.setColor(fluidMap[TEX]);
     ['auto','cosmic','haxiomic','acid','mono'].forEach(function(nm,i){
@@ -1627,223 +1632,7 @@ function drawExtraVisualizer(t, spd, bloom){
     }
   }
   else 
-  if(MODE==='liquidmetal'){
-    // Liquid Metal Surface — performance-safe chrome/metaball field.
-    // Goal: one continuous premium mercury-like surface, not separate orbiting blobs.
-    // Strategy: render a low-res scalar field to an offscreen canvas, upscale smoothly,
-    // then add a few cheap specular highlights + restrained grain.
-
-    ctx.globalCompositeOperation='source-over';
-    ctx.fillStyle='rgba(0,0,0,0.38)';
-    ctx.fillRect(0,0,w,h);
-
-    var minDim = Math.min(w,h);
-    var time = t * (0.055 + spd * 0.085 + bass * 0.055);
-
-    // Lazily create a tiny offscreen buffer. This is the performance win.
-    if(!window.__lmBuf){
-      window.__lmBuf = document.createElement('canvas');
-      window.__lmCtx = window.__lmBuf.getContext('2d', { willReadFrequently: true });
-      window.__lmImg = null;
-    }
-    if(!window.__lmCtx) return;
-
-    var scale = IS_MOBILE ? 0.115 : 0.145;
-    var bw = Math.max(120, Math.floor(w * scale));
-    var bh = Math.max(80, Math.floor(h * scale));
-
-    if(window.__lmBuf.width !== bw || window.__lmBuf.height !== bh){
-      window.__lmBuf.width = bw;
-      window.__lmBuf.height = bh;
-      window.__lmImg = null;
-    }
-
-    var bctx = window.__lmCtx;
-    if(!window.__lmImg || window.__lmImg.width !== bw || window.__lmImg.height !== bh){
-      window.__lmImg = bctx.createImageData(bw, bh);
-    }
-    var img = window.__lmImg;
-    var data = img.data;
-
-    var cxB = bw * 0.5;
-    var cyB = bh * 0.5;
-    var minB = Math.min(bw,bh);
-
-    // Cohesive blobs positioned close enough to merge into one liquid mass.
-    var blobCount = IS_MOBILE ? 6 : 8;
-    var blobs = [];
-
-    for(var bi=0; bi<blobCount; bi++){
-      var phase = bi * 1.61803398875;
-      var orbit = minB * (0.055 + (bi % 4) * 0.020);
-
-      blobs.push({
-        x: cxB +
-          Math.sin(time * (0.62 + bi * 0.020) + phase) * orbit +
-          Math.sin(time * 0.21 + phase * 2.0) * minB * 0.030,
-        y: cyB +
-          Math.cos(time * (0.48 + bi * 0.016) + phase * 1.25) * orbit * 0.72 +
-          Math.cos(time * 0.25 + phase * 1.8) * minB * 0.024,
-        r: minB * (0.175 + 0.018 * Math.sin(time * 0.7 + phase) + bass * 0.030)
-      });
-    }
-
-    function clamp(v,a,b){ return Math.max(a, Math.min(b, v)); }
-
-    function tintRGB(v, silverMix){
-      var c = paletteRGB(v);
-      silverMix = silverMix === undefined ? 0.78 : silverMix;
-      var lum = c[0]*0.299 + c[1]*0.587 + c[2]*0.114;
-      var silver = 185 + lum * 0.18;
-
-      var r = c[0]*(1-silverMix) + silver*silverMix;
-      var g = c[1]*(1-silverMix) + silver*silverMix;
-      var b = c[2]*(1-silverMix) + (silver+16)*silverMix;
-
-      if(typeof getTextureKey === 'function' && getTextureKey() === 'vintage'){
-        r = r * 0.90 + 18;
-        g = g * 0.83 + 15;
-        b = b * 0.68 + 10;
-      }
-
-      return [clamp(Math.round(r),0,255), clamp(Math.round(g),0,255), clamp(Math.round(b),0,255)];
-    }
-
-    // Scalar-field render. Low-res enough to be fast, smooth enough when upscaled.
-    var ptr = 0;
-
-    for(var yb=0; yb<bh; yb++){
-      for(var xb=0; xb<bw; xb++){
-        var field = 0.0;
-
-        for(var k=0; k<blobs.length; k++){
-          var b = blobs[k];
-          var dx = xb - b.x;
-          var dy = yb - b.y;
-          var d2 = dx*dx + dy*dy + 1.0;
-          field += (b.r*b.r) / d2;
-        }
-
-        // Soft threshold = continuous mercury mass.
-        var edge = clamp((field - 0.72) * 1.65, 0, 1);
-        edge = edge * edge * (3.0 - 2.0 * edge);
-
-        // Approximate surface normal from center + wave. Cheap fake lighting.
-        var nx = (xb - cxB) / minB;
-        var ny = (yb - cyB) / minB;
-        var radial = Math.sqrt(nx*nx + ny*ny);
-
-        var wave =
-          Math.sin(nx * 12.0 + time * 1.8) * 0.08 +
-          Math.cos(ny * 10.0 - time * 1.4) * 0.07 +
-          Math.sin((nx + ny) * 8.0 + time * 1.2) * 0.045;
-
-        var shade = clamp(edge * (0.34 + 0.72*(1.0-radial)) + wave, 0, 1);
-
-        // Specular flash near upper-left and moving streaks inside the mass.
-        var hx = nx + 0.20 + Math.sin(time*0.55)*0.06;
-        var hy = ny - 0.22 + Math.cos(time*0.45)*0.05;
-        var spec = Math.pow(clamp(1.0 - Math.sqrt(hx*hx + hy*hy)*3.1, 0, 1), 4.0);
-
-        var ribbon =
-          Math.pow(clamp(0.5 + 0.5*Math.sin((ny*10.0 + nx*2.5) - time*2.1),0,1), 12.0) *
-          edge * 0.52;
-
-        var value = clamp(shade * 0.62 + spec * 0.76 + ribbon * 0.50, 0, 1);
-        var color = tintRGB((value + time*0.018 + radial*0.08) % 1, 0.82 - spec*0.22);
-
-        var alpha = Math.round(edge * 255);
-
-        // Darken outside; keep the object as a single surface.
-        data[ptr++] = color[0];
-        data[ptr++] = color[1];
-        data[ptr++] = color[2];
-        data[ptr++] = alpha;
-      }
-    }
-
-    bctx.putImageData(img,0,0);
-
-    ctx.save();
-    ctx.globalCompositeOperation='source-over';
-    ctx.imageSmoothingEnabled = true;
-    ctx.filter = 'blur(2.2px)';
-    ctx.drawImage(window.__lmBuf, 0, 0, bw, bh, 0, 0, w, h);
-    ctx.filter = 'none';
-
-    // Tight specular ribbons — no orbit lines, no contour ellipses.
-    ctx.globalCompositeOperation='screen';
-
-    for(var band=0; band<4; band++){
-      var y0 =
-        cy +
-        (band - 1.5) * minDim * 0.070 +
-        Math.sin(time * 1.35 + band * 1.7) * minDim * 0.018;
-
-      var grad = ctx.createLinearGradient(
-        cx - minDim * 0.34,
-        y0,
-        cx + minDim * 0.34,
-        y0
-      );
-
-      grad.addColorStop(0.00, 'rgba(0,0,0,0)');
-      grad.addColorStop(0.35, 'rgba(210,230,245,' + (0.035 + high*0.018) + ')');
-      grad.addColorStop(0.50, 'rgba(255,255,255,' + (0.045 + bass*0.020) + ')');
-      grad.addColorStop(0.65, 'rgba(160,185,210,' + (0.040 + mid*0.015) + ')');
-      grad.addColorStop(1.00, 'rgba(0,0,0,0)');
-
-      ctx.strokeStyle = grad;
-      ctx.lineWidth = minDim * (0.006 + bass * 0.002);
-      ctx.beginPath();
-
-      for(var j=0; j<=28; j++){
-        var p = j / 28;
-        var x2 = cx - minDim * 0.34 + p * minDim * 0.68;
-        var y2 =
-          y0 +
-          Math.sin(p * Math.PI * 2.6 + time * 1.4 + band) * minDim * 0.011;
-
-        if(j===0) ctx.moveTo(x2,y2);
-        else ctx.lineTo(x2,y2);
-      }
-
-      ctx.stroke();
-    }
-
-    // Subtle vignette keeps it premium/dark.
-    ctx.globalCompositeOperation='source-over';
-    var vig = ctx.createRadialGradient(cx, cy, minDim*0.16, cx, cy, minDim*0.62);
-    vig.addColorStop(0.00, 'rgba(0,0,0,0)');
-    vig.addColorStop(0.72, 'rgba(0,0,0,0.08)');
-    vig.addColorStop(1.00, 'rgba(0,0,0,0.36)');
-    ctx.fillStyle = vig;
-    ctx.beginPath();
-    ctx.arc(cx, cy, minDim, 0, Math.PI*2);
-    ctx.fill();
-
-    // Cheap analog grain: sparse points only, not a screen-wide nested loop.
-    ctx.globalCompositeOperation='overlay';
-    var grains = IS_MOBILE ? 180 : 280;
-    var seed = Math.floor(t * 16.0);
-
-    for(var gi=0; gi<grains; gi++){
-      var rn = Math.sin((gi*12.9898 + seed*78.233)*0.017)*43758.5453;
-      rn = rn - Math.floor(rn);
-      var rn2 = Math.sin((gi*91.113 + seed*17.77)*0.013)*24634.6345;
-      rn2 = rn2 - Math.floor(rn2);
-
-      var ga = (Math.sin(gi*1.7 + seed)*0.5+0.5)*0.045;
-      ctx.fillStyle = gi % 2 === 0 ? 'rgba(255,255,255,'+ga+')' : 'rgba(0,0,0,'+(ga*0.85)+')';
-      ctx.fillRect(rn*w, rn2*h, IS_MOBILE ? 2 : 1.25, IS_MOBILE ? 2 : 1.25);
-    }
-
-    ctx.restore();
-    ctx.globalCompositeOperation='source-over';
-    ctx.filter='none';
-  }
-
-if(MODE==='lightning'){
+  if(MODE==='lightning'){
     // Lightning — more unpredictable placement, tilt, branching, and strike origin.
     ctx.globalCompositeOperation='source-over';
     ctx.fillStyle='rgba(0,0,0,' + (0.20 - Math.min(0.10, bass * 0.07)) + ')';
@@ -3163,7 +2952,7 @@ document.addEventListener('keydown',function(e){
   if(key===' '&&MODE==='ripple'){e.preventDefault();fluid.triggerSplat(1.0);}
 
   // Number keys 1-0 + numpad switch modes
-  var numModes=['ripple','liquidmetal','lightning','ascii','bio','orb','metal','osc','fft','lissajous','retrowave','star','iris','pulse','tiedye'];
+  var numModes=['ripple','lightning','ascii','bio','orb','metal','osc','fft','lissajous','retrowave','star','iris','pulse','tiedye'];
   var numKey = null;
   if(e.key>='1'&&e.key<='9') numKey = parseInt(e.key)-1;
   if(e.key==='0') numKey = 9;
@@ -3213,6 +3002,278 @@ function buildMVP(t) {
 
 // ── RENDER LOOP ────────────────────────────────────────────────────
 var t0=performance.now(), frame=0;
+
+
+// ═══════════════════════════════════════════════════════════════════
+// LIQUID METAL WEBGL MODE
+// Dedicated fullscreen shader-style renderer for premium chrome/mercury.
+// Isolated from main GL programs so it cannot break Orb/Metal/Iris.
+// ═══════════════════════════════════════════════════════════════════
+var liquidMetalGLMode = (function(){
+  var canvas = null;
+  var gl = null;
+  var program = null;
+  var buffer = null;
+  var uniforms = {};
+  var booted = false;
+  var lastTex = -1;
+  var paletteData = new Float32Array(18);
+
+  var vs = `
+attribute vec2 aPos;
+varying vec2 vUv;
+void main(){
+  vUv = aPos * 0.5 + 0.5;
+  gl_Position = vec4(aPos, 0.0, 1.0);
+}`;
+
+  var fs = `
+precision highp float;
+varying vec2 vUv;
+
+uniform vec2 uResolution;
+uniform float uTime;
+uniform float uBass;
+uniform float uMid;
+uniform float uHigh;
+uniform float uSpeed;
+uniform vec3 uPalette[6];
+
+float hash(vec2 p){
+  return fract(sin(dot(p, vec2(127.1,311.7))) * 43758.5453123);
+}
+
+float noise(vec2 p){
+  vec2 i = floor(p);
+  vec2 f = fract(p);
+  vec2 u = f*f*(3.0-2.0*f);
+  return mix(
+    mix(hash(i + vec2(0.0,0.0)), hash(i + vec2(1.0,0.0)), u.x),
+    mix(hash(i + vec2(0.0,1.0)), hash(i + vec2(1.0,1.0)), u.x),
+    u.y
+  );
+}
+
+float fbm(vec2 p){
+  float v = 0.0;
+  float a = 0.5;
+  for(int i=0;i<5;i++){
+    v += a * noise(p);
+    p *= 2.03;
+    a *= 0.5;
+  }
+  return v;
+}
+
+vec3 pal(float t){
+  t = clamp(t, 0.0, 0.999);
+  float x = t * 5.0;
+  int i = int(floor(x));
+  float f = fract(x);
+
+  vec3 c0 = uPalette[0];
+  vec3 c1 = uPalette[1];
+  if(i == 0){ c0 = uPalette[0]; c1 = uPalette[1]; }
+  else if(i == 1){ c0 = uPalette[1]; c1 = uPalette[2]; }
+  else if(i == 2){ c0 = uPalette[2]; c1 = uPalette[3]; }
+  else if(i == 3){ c0 = uPalette[3]; c1 = uPalette[4]; }
+  else { c0 = uPalette[4]; c1 = uPalette[5]; }
+
+  return mix(c0, c1, smoothstep(0.0, 1.0, f));
+}
+
+vec3 mercuryTint(float t, float shine){
+  vec3 c = pal(fract(t));
+  float lum = dot(c, vec3(0.299,0.587,0.114));
+  vec3 silver = vec3(0.70 + lum*0.18, 0.72 + lum*0.16, 0.78 + lum*0.14);
+  // Keep it chrome-first, texture second.
+  return mix(c, silver, 0.80 - shine * 0.22);
+}
+
+float metaballs(vec2 p, float time, float audio){
+  float f = 0.0;
+
+  for(int i=0; i<8; i++){
+    float fi = float(i);
+    float ph = fi * 1.6180339;
+
+    vec2 center = vec2(
+      sin(time*(0.42 + fi*0.023) + ph) * (0.18 + 0.018*mod(fi,3.0)) +
+      sin(time*0.19 + ph*2.1) * 0.075,
+      cos(time*(0.34 + fi*0.019) + ph*1.37) * (0.15 + 0.015*mod(fi,4.0)) +
+      cos(time*0.23 + ph*1.8) * 0.055
+    );
+
+    float r = 0.145 + 0.015*sin(time*0.75 + ph) + audio*0.030;
+    vec2 d = p - center;
+    f += (r*r) / (dot(d,d) + 0.0025);
+  }
+
+  return f;
+}
+
+void main(){
+  vec2 uv = (gl_FragCoord.xy * 2.0 - uResolution.xy) / min(uResolution.x, uResolution.y);
+
+  float audio = uBass*0.75 + uMid*0.22 + uHigh*0.10;
+  float time = uTime * (0.26 + uSpeed*0.20 + audio*0.18);
+
+  // Domain warp for smooth moving mercury surface.
+  vec2 q = uv;
+  float n1 = fbm(q*1.7 + vec2(time*0.10, -time*0.07));
+  float n2 = fbm(q*2.2 + vec2(-time*0.08, time*0.12));
+  q += vec2(n1 - 0.5, n2 - 0.5) * (0.10 + audio*0.06);
+
+  float field = metaballs(q, time, audio);
+
+  // One connected liquid object with soft threshold.
+  float mask = smoothstep(0.52, 0.82, field);
+  float edge = smoothstep(0.50, 0.72, field) - smoothstep(0.86, 1.10, field);
+
+  // Fake normal from scalar field.
+  float e = 0.006;
+  float fx = metaballs(q + vec2(e,0.0), time, audio) - metaballs(q - vec2(e,0.0), time, audio);
+  float fy = metaballs(q + vec2(0.0,e), time, audio) - metaballs(q - vec2(0.0,e), time, audio);
+  vec3 normal = normalize(vec3(-fx*0.55, -fy*0.55, 1.0));
+
+  vec3 lightDir = normalize(vec3(-0.45, 0.55, 0.90));
+  float diff = clamp(dot(normal, lightDir), 0.0, 1.0);
+
+  vec2 viewShift = q + normal.xy * 0.32;
+  float reflectionBands =
+    sin((viewShift.y*9.5 + viewShift.x*1.8) - time*1.5) * 0.5 + 0.5;
+  reflectionBands = pow(reflectionBands, 6.5);
+
+  float spec = pow(clamp(dot(reflect(-lightDir, normal), vec3(0.0,0.0,1.0)),0.0,1.0), 26.0);
+  float fresnel = pow(1.0 - clamp(normal.z,0.0,1.0), 2.2);
+
+  vec3 base = mercuryTint(diff*0.55 + reflectionBands*0.25 + time*0.018, spec);
+  vec3 chrome = base * (0.22 + diff*0.55) + vec3(1.0) * spec * 0.85;
+  chrome += pal(fract(time*0.04 + uv.x*0.12)) * reflectionBands * 0.14;
+  chrome += vec3(0.85,0.92,1.0) * fresnel * 0.20;
+
+  // Dark premium background and subtle ambient halo.
+  float d = length(uv);
+  vec3 bg = vec3(0.0);
+  bg += pal(fract(time*0.025 + 0.15)) * (0.035 * smoothstep(1.1, 0.0, d));
+
+  // Slight analog grain, cheap shader-side.
+  float grain = hash(gl_FragCoord.xy + floor(uTime*24.0));
+  chrome += (grain - 0.5) * 0.035 * mask;
+
+  float alpha = mask;
+  vec3 color = mix(bg, chrome, alpha);
+
+  // Vignette
+  color *= smoothstep(1.25, 0.25, d);
+
+  gl_FragColor = vec4(color, 1.0);
+}`;
+
+  function compile(type, src){
+    var sh = gl.createShader(type);
+    gl.shaderSource(sh, src);
+    gl.compileShader(sh);
+    if(!gl.getShaderParameter(sh, gl.COMPILE_STATUS)){
+      console.warn('LiquidMetal shader compile failed:', gl.getShaderInfoLog(sh));
+      return null;
+    }
+    return sh;
+  }
+
+  function boot(){
+    canvas = document.getElementById('liquidmetal-canvas');
+    if(!canvas) return false;
+
+    gl = canvas.getContext('webgl', { alpha: false, antialias: false, depth: false, stencil: false, preserveDrawingBuffer: false });
+    if(!gl) gl = canvas.getContext('experimental-webgl');
+    if(!gl) return false;
+
+    var v = compile(gl.VERTEX_SHADER, vs);
+    var f = compile(gl.FRAGMENT_SHADER, fs);
+    if(!v || !f) return false;
+
+    program = gl.createProgram();
+    gl.attachShader(program, v);
+    gl.attachShader(program, f);
+    gl.linkProgram(program);
+
+    if(!gl.getProgramParameter(program, gl.LINK_STATUS)){
+      console.warn('LiquidMetal program link failed:', gl.getProgramInfoLog(program));
+      return false;
+    }
+
+    buffer = gl.createBuffer();
+    gl.bindBuffer(gl.ARRAY_BUFFER, buffer);
+    gl.bufferData(gl.ARRAY_BUFFER, new Float32Array([-1,-1, 3,-1, -1,3]), gl.STATIC_DRAW);
+
+    uniforms = {
+      aPos: gl.getAttribLocation(program, 'aPos'),
+      uResolution: gl.getUniformLocation(program, 'uResolution'),
+      uTime: gl.getUniformLocation(program, 'uTime'),
+      uBass: gl.getUniformLocation(program, 'uBass'),
+      uMid: gl.getUniformLocation(program, 'uMid'),
+      uHigh: gl.getUniformLocation(program, 'uHigh'),
+      uSpeed: gl.getUniformLocation(program, 'uSpeed'),
+      uPalette: gl.getUniformLocation(program, 'uPalette')
+    };
+
+    booted = true;
+    return true;
+  }
+
+  function resize(){
+    if(!canvas || !gl) return;
+    var dpr = Math.min(1.5, window.devicePixelRatio || 1);
+    var ww = Math.max(1, Math.floor(window.innerWidth * dpr));
+    var hh = Math.max(1, Math.floor(window.innerHeight * dpr));
+    if(canvas.width !== ww || canvas.height !== hh){
+      canvas.width = ww;
+      canvas.height = hh;
+    }
+    gl.viewport(0,0,canvas.width,canvas.height);
+  }
+
+  function updatePalette(){
+    if(!gl || !program) return;
+    if(lastTex === TEX) return;
+    lastTex = TEX;
+
+    var p = currentPalette ? currentPalette() : [[255,0,0],[255,255,0],[0,255,0],[0,255,255],[0,0,255],[255,0,255]];
+    for(var i=0;i<6;i++){
+      var c = p[Math.min(i, p.length-1)];
+      paletteData[i*3+0] = c[0] / 255;
+      paletteData[i*3+1] = c[1] / 255;
+      paletteData[i*3+2] = c[2] / 255;
+    }
+  }
+
+  function tick(t, bass, mid, high, speed){
+    if(!booted && !boot()) return;
+    resize();
+    updatePalette();
+
+    gl.useProgram(program);
+    gl.bindBuffer(gl.ARRAY_BUFFER, buffer);
+    gl.enableVertexAttribArray(uniforms.aPos);
+    gl.vertexAttribPointer(uniforms.aPos, 2, gl.FLOAT, false, 0, 0);
+
+    gl.uniform2f(uniforms.uResolution, canvas.width, canvas.height);
+    gl.uniform1f(uniforms.uTime, t || 0);
+    gl.uniform1f(uniforms.uBass, bass || 0);
+    gl.uniform1f(uniforms.uMid, mid || 0);
+    gl.uniform1f(uniforms.uHigh, high || 0);
+    gl.uniform1f(uniforms.uSpeed, speed || 0.7);
+    gl.uniform3fv(uniforms.uPalette, paletteData);
+
+    gl.drawArrays(gl.TRIANGLES, 0, 3);
+  }
+
+  return {
+    tick: tick,
+    resetPalette: function(){ lastTex = -1; }
+  };
+})();
 
 function animate(){
   if(!APP_VISIBLE && document.hidden){ requestAnimationFrame(animate); return; }
@@ -3358,6 +3419,12 @@ function animate(){
     gl.enable(gl.DEPTH_TEST);
   }
 
+  // ── LIQUID METAL WEBGL ──────────────────────────────────
+  if(MODE==='liquidmetal' && typeof liquidMetalGLMode !== 'undefined'){
+    try { liquidMetalGLMode.tick(t, sBass, sMid, sHigh, spd); }
+    catch(e) { console.warn('liquidMetalGLMode.tick error:', e); }
+  }
+
   // ── BIOLUMINESCENCE ───────────────────────────────────────
   if(MODE==='bio' && typeof bioSim !== 'undefined'){
     try { bioSim.tick(t, sBass, sMid, sHigh, spd, bloom); }
@@ -3377,7 +3444,7 @@ function animate(){
     fluid.tick(t, sBass, sMid, sHigh, beatVal);
   }
 
-  if(['osc','fft','dots','lissajous','retrowave','star','pulse','liquidmetal','lightning','ascii'].indexOf(MODE)!==-1){
+  if(['osc','fft','dots','lissajous','retrowave','star','pulse','lightning','ascii'].indexOf(MODE)!==-1){
     drawExtraVisualizer(t, spd, bloom);
   }
 
@@ -4104,7 +4171,7 @@ var tieDyeSim = (function(){
   };
 
   window.cycleMode = function(direction){
-    var modes = window.autoVJModes || ['ripple','liquidmetal','lightning','ascii','bio','orb','metal','osc','fft','lissajous','retrowave','star','iris','pulse','tiedye'];
+    var modes = window.autoVJModes || ['ripple','lightning','ascii','bio','orb','metal','osc','fft','lissajous','retrowave','star','iris','pulse','tiedye'];
     var currentIndex = modes.indexOf(window.MODE);
 
     if (currentIndex < 0) currentIndex = 0;

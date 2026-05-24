@@ -442,8 +442,7 @@ body::after { content: ''; position: fixed; inset: 0; pointer-events: none; z-in
     <div class="vd"></div>
     <button class="t"    id="btn-plasma" onclick="setMode('plasma')">☼ PLASMA</button>
     <div class="vd"></div>
-    <button class="t"    id="btn-liquidrainbow" onclick="setMode('liquidrainbow')">≈ LIQUID RAINBOW</button>
-    <div class="vd"></div>
+
     <button class="t"    id="btn-orb"    onclick="setMode('orb')">⬡ ORB BLOB</button>
     <div class="vd"></div>
     <button class="t"    id="btn-metal"  onclick="setMode('metal')">⬢ METAL SPHERE</button>
@@ -734,7 +733,7 @@ var autoVJActive = false;
 var autoVJTimer = null;
 var autoVJIndex = 0;
 var autoVJIntervalMs = 12000;
-var autoVJModes = ['ripple','liquidmetal','lightning','ascii','plasma','liquidrainbow','bio','orb','metal','osc','fft','lissajous','retrowave','star','iris','pulse','tiedye'];
+var autoVJModes = ['ripple','liquidmetal','lightning','ascii','plasma','bio','orb','metal','osc','fft','lissajous','retrowave','star','iris','pulse','tiedye'];
 // Metal sphere params
 var M_NOISE   = 1.16;
 var M_DISP    = 0.45;
@@ -756,7 +755,7 @@ var micGainNode = null;
 function setMode(m) {
   MODE = m;
 
-  var twoDModes = ['osc','fft','lissajous','retrowave','star','pulse','liquidmetal','lightning','ascii','plasma','liquidrainbow'];
+  var twoDModes = ['osc','fft','lissajous','retrowave','star','pulse','liquidmetal','lightning','ascii','plasma'];
   var is2D = twoDModes.indexOf(m) !== -1;
 
   var modeButtonIds = {
@@ -768,7 +767,6 @@ function setMode(m) {
     lightning: 'btn-lightning',
     ascii: 'btn-ascii',
     plasma: 'btn-plasma',
-    liquidrainbow: 'btn-liquidrainbow',
     osc: 'btn-osc',
     fft: 'btn-fft',
     lissajous: 'btn-lissajous',
@@ -1767,24 +1765,22 @@ function drawExtraVisualizer(t, spd, bloom){
   }
 
 if(MODE==='lightning'){
-    // Lightning — Shadertoy-inspired branching electric bolts.
-    // Audio drives branch count, jitter, flash, and bolt thickness.
+    // Lightning — more unpredictable placement, tilt, branching, and strike origin.
     ctx.globalCompositeOperation='source-over';
-    ctx.fillStyle='rgba(0,0,0,' + (0.22 - Math.min(0.12, bass * 0.08)) + ')';
+    ctx.fillStyle='rgba(0,0,0,' + (0.20 - Math.min(0.10, bass * 0.07)) + ')';
     ctx.fillRect(0,0,w,h);
 
     ctx.globalCompositeOperation='lighter';
 
     var minDim = Math.min(w,h);
-    var time = t * (0.9 + spd * 1.4 + high * 1.8);
-    var flash = Math.pow(Math.max(0, bass), 1.7);
-    var branchCount = Math.floor(3 + mid * 8 + high * 5);
-    var segs = IS_MOBILE ? 46 : 72;
+    var time = t * (0.82 + spd * 1.2 + high * 1.65);
+    var flash = Math.pow(Math.max(0, bass), 1.55);
+    var branchCount = Math.floor(4 + mid * 10 + high * 7);
+    var segs = IS_MOBILE ? 48 : 78;
+    var strikeId = Math.floor(time * (0.65 + high * 1.2 + bass * 0.6));
 
-    function rand(n){
-      return Math.sin(n * 127.1 + Math.sin(n * 311.7) * 437.3) * 43758.5453123 % 1;
-    }
-
+    function fract(x){ return x - Math.floor(x); }
+    function rand(n){ return fract(Math.sin(n * 127.1 + 311.7) * 43758.5453123); }
     function noise(n){
       var i = Math.floor(n);
       var f = n - i;
@@ -1792,6 +1788,14 @@ if(MODE==='lightning'){
       var b = rand(i + 1.0);
       f = f * f * (3.0 - 2.0 * f);
       return a + (b - a) * f;
+    }
+
+    function edgePoint(side, seed){
+      var p = rand(seed);
+      if(side === 0) return {x:p*w, y:-h*0.08};
+      if(side === 1) return {x:w*1.08, y:p*h};
+      if(side === 2) return {x:p*w, y:h*1.08};
+      return {x:-w*0.08, y:p*h};
     }
 
     function drawBolt(x1,y1,x2,y2,seed,thick,alpha,branches){
@@ -1802,60 +1806,64 @@ if(MODE==='lightning'){
       var nx = -dy / len;
       var ny = dx / len;
 
+      var tilt = (rand(seed + 55.0) - 0.5) * minDim * (0.18 + high * 0.12);
+      var bow = (rand(seed + 77.0) - 0.5) * minDim * (0.20 + bass * 0.10);
+
       for(var i=0;i<=segs;i++){
         var p = i / segs;
         var envelope = Math.sin(p * Math.PI);
-        var jitter =
-          (noise(seed + i * 0.37 + time * 7.0) - 0.5) *
-          minDim * (0.12 + high * 0.08) * envelope;
 
-        var drift =
-          Math.sin(p * Math.PI * 5.0 + time * 4.0 + seed) *
-          minDim * 0.018 * envelope;
+        var jitter =
+          (noise(seed + i * 0.42 + time * 8.0) - 0.5) *
+          minDim * (0.14 + high * 0.12 + bass * 0.06) * envelope;
+
+        var snap =
+          Math.sin(p * Math.PI * (5.0 + rand(seed)*8.0) + time * (5.0 + high*4.0)) *
+          minDim * (0.020 + high * 0.018) * envelope;
+
+        var curve = (p - 0.5) * tilt + Math.sin(p * Math.PI) * bow;
 
         points.push({
-          x: x1 + dx * p + nx * (jitter + drift),
-          y: y1 + dy * p + ny * (jitter + drift)
+          x: x1 + dx * p + nx * (jitter + snap + curve),
+          y: y1 + dy * p + ny * (jitter + snap + curve)
         });
       }
 
-      // outer blue glow
       ctx.lineCap='round';
       ctx.lineJoin='round';
-      ctx.shadowBlur = (28 + flash * 55) * vizDpr;
-      ctx.shadowColor = paletteColor(0.72, 0.9);
-      ctx.strokeStyle = paletteColor(0.38, 0.26 * alpha);
-      ctx.lineWidth = thick * 6.0 * vizDpr;
+
+      ctx.shadowBlur = (34 + flash * 64) * vizDpr;
+      ctx.shadowColor = paletteColor(0.72, 0.95);
+      ctx.strokeStyle = paletteColor(0.34 + rand(seed)*0.30, 0.25 * alpha);
+      ctx.lineWidth = thick * 6.5 * vizDpr;
       ctx.beginPath();
       points.forEach(function(pt,idx){ if(idx===0) ctx.moveTo(pt.x,pt.y); else ctx.lineTo(pt.x,pt.y); });
       ctx.stroke();
 
-      // mid cyan body
-      ctx.shadowBlur = (14 + flash * 32) * vizDpr;
-      ctx.shadowColor = paletteColor(0.82, 0.95);
-      ctx.strokeStyle = paletteColor(0.68, 0.58 * alpha);
-      ctx.lineWidth = thick * 2.6 * vizDpr;
+      ctx.shadowBlur = (15 + flash * 36) * vizDpr;
+      ctx.shadowColor = paletteColor(0.85, 0.95);
+      ctx.strokeStyle = paletteColor(0.62 + rand(seed+1.0)*0.25, 0.60 * alpha);
+      ctx.lineWidth = thick * 2.7 * vizDpr;
       ctx.beginPath();
       points.forEach(function(pt,idx){ if(idx===0) ctx.moveTo(pt.x,pt.y); else ctx.lineTo(pt.x,pt.y); });
       ctx.stroke();
 
-      // hot white core
-      ctx.shadowBlur = (4 + flash * 18) * vizDpr;
+      ctx.shadowBlur = (5 + flash * 20) * vizDpr;
       ctx.shadowColor = paletteColor(1.0, 1);
-      ctx.strokeStyle = paletteColor(0.98, 0.84 * alpha);
-      ctx.lineWidth = Math.max(1, thick * 0.85 * vizDpr);
+      ctx.strokeStyle = paletteColor(0.98, 0.88 * alpha);
+      ctx.lineWidth = Math.max(1, thick * 0.82 * vizDpr);
       ctx.beginPath();
       points.forEach(function(pt,idx){ if(idx===0) ctx.moveTo(pt.x,pt.y); else ctx.lineTo(pt.x,pt.y); });
       ctx.stroke();
 
-      // branches
       if(branches){
         for(var b=0;b<branchCount;b++){
-          var idx = 8 + Math.floor(rand(seed + b * 9.17 + time) * (points.length - 16));
+          var idx = 6 + Math.floor(rand(seed + b * 9.17 + strikeId) * (points.length - 12));
           var base = points[Math.max(0, Math.min(points.length-1, idx))];
           var side = rand(seed + b * 4.4) > 0.5 ? 1 : -1;
-          var blen = minDim * (0.10 + rand(seed + b * 2.1) * 0.22) * (0.55 + high);
-          var ba = Math.atan2(dy,dx) + side * (0.65 + rand(seed+b)*0.75);
+          var blen = minDim * (0.08 + rand(seed + b * 2.1) * 0.27) * (0.55 + high);
+          var baseAngle = Math.atan2(dy,dx);
+          var ba = baseAngle + side * (0.55 + rand(seed+b)*1.15) + (rand(seed+b*3.0)-0.5)*0.9;
 
           drawBolt(
             base.x,
@@ -1863,23 +1871,50 @@ if(MODE==='lightning'){
             base.x + Math.cos(ba) * blen,
             base.y + Math.sin(ba) * blen,
             seed + b * 13.37,
-            thick * 0.36,
-            alpha * 0.48,
+            thick * (0.24 + rand(seed+b)*0.20),
+            alpha * (0.32 + rand(seed+b*2.0)*0.30),
             false
           );
         }
       }
     }
 
-    var startX = w * (0.18 + 0.12 * Math.sin(time * 0.38));
-    var startY = h * (0.15 + 0.10 * Math.cos(time * 0.31));
-    var endX = w * (0.82 + 0.10 * Math.sin(time * 0.27 + 2.0));
-    var endY = h * (0.76 + 0.12 * Math.cos(time * 0.34 + 1.2));
+    var sideA = Math.floor(rand(strikeId + 10.0) * 4.0);
+    var sideB = (sideA + 1 + Math.floor(rand(strikeId + 20.0) * 3.0)) % 4;
 
-    drawBolt(startX,startY,endX,endY,Math.floor(time*2.0),1.4 + bass * 5.0,0.72 + flash * 0.55,true);
+    var pA = edgePoint(sideA, strikeId + 30.0);
+    var pB = edgePoint(sideB, strikeId + 40.0);
 
-    // occasional screen flash
-    if(flash > 0.28){
+    // Occasionally strike through the center instead of edge-to-edge.
+    if(rand(strikeId + 50.0) > 0.58){
+      pB = {
+        x: cx + (rand(strikeId+51.0)-0.5) * w * 0.55,
+        y: cy + (rand(strikeId+52.0)-0.5) * h * 0.55
+      };
+    }
+
+    drawBolt(
+      pA.x,
+      pA.y,
+      pB.x,
+      pB.y,
+      strikeId * 19.19,
+      1.25 + bass * 5.5 + high * 1.2,
+      0.70 + flash * 0.60,
+      true
+    );
+
+    // Secondary ghost bolt for chaotic variation.
+    if(rand(strikeId + 80.0) > 0.42 || high > 0.35){
+      var pC = edgePoint(Math.floor(rand(strikeId + 90.0) * 4.0), strikeId + 91.0);
+      var pD = {
+        x: cx + (rand(strikeId+92.0)-0.5) * w * 0.85,
+        y: cy + (rand(strikeId+93.0)-0.5) * h * 0.85
+      };
+      drawBolt(pC.x,pC.y,pD.x,pD.y,strikeId*31.7,0.65 + high*2.6,0.32 + high*0.45,true);
+    }
+
+    if(flash > 0.24){
       ctx.globalCompositeOperation='screen';
       ctx.fillStyle=paletteColor(0.75, Math.min(0.18, flash * 0.12));
       ctx.fillRect(0,0,w,h);
@@ -1888,153 +1923,134 @@ if(MODE==='lightning'){
     ctx.shadowBlur = 0;
   }
 
-
-  if(MODE==='ascii'){
-    // ASCII — shader-inspired character field.
-    // Uses shared texture palette; audio controls density, scale, and brightness.
+if(MODE==='ascii'){
+    // ASCII — fixed and texture-aware.
+    // SIZE slider controls character/pixel scale.
     ctx.globalCompositeOperation='source-over';
-    ctx.fillStyle='rgba(0,0,0,0.32)';
+    ctx.fillStyle='rgba(0,0,0,0.36)';
     ctx.fillRect(0,0,w,h);
 
     var minDim = Math.min(w,h);
-    var time = t * (0.55 + spd * 1.1 + high * 0.8);
-    var chars = ' .:-=+*#%@';
-    var cell = Math.max(8, Math.floor(minDim / (IS_MOBILE ? 38 : 58)));
-    var fontSize = cell * (0.92 + bass * 0.45);
+    var time = t * (0.45 + spd * 0.9 + high * 0.55);
+    var chars = ' .,:;irsXA253hMHGS#9B&@';
+    var sizeNorm = Math.max(0.1, Math.min(1.6, SIZE / 5));
+    var cell = Math.max(7, Math.floor((IS_MOBILE ? 13 : 11) * sizeNorm * vizDpr));
+    var fontSize = Math.max(8, cell * (0.9 + bass * 0.25));
 
+    ctx.save();
     ctx.font = '900 ' + fontSize + 'px monospace';
     ctx.textAlign = 'center';
     ctx.textBaseline = 'middle';
 
-    for(var y=0; y<h+cell; y+=cell){
-      for(var x=0; x<w+cell; x+=cell){
+    for(var y=cell*0.5; y<h+cell; y+=cell){
+      for(var x=cell*0.5; x<w+cell; x+=cell){
         var ux = (x - cx) / minDim;
         var uy = (y - cy) / minDim;
         var d = Math.sqrt(ux*ux + uy*uy);
+        var a = Math.atan2(uy, ux);
+
         var wave =
-          Math.sin(ux * 18.0 + time * 2.2) +
-          Math.cos(uy * 14.0 - time * 1.7) +
-          Math.sin(d * 26.0 - time * 3.0 + bass * 4.0);
+          Math.sin(ux * 13.0 + time * 1.8) +
+          Math.cos(uy * 12.0 - time * 1.4) +
+          Math.sin(d * 24.0 - time * 2.35 + a * 2.0);
 
-        var v = 0.5 + 0.5 * Math.sin(wave + d * 4.0);
-        v = Math.max(0, Math.min(1, v + bass * 0.25 + high * 0.12));
+        var audio = bass * 0.42 + mid * 0.22 + high * 0.18;
+        var v = Math.max(0, Math.min(1, 0.5 + 0.5 * Math.sin(wave + audio * 3.2)));
 
-        var idx = Math.floor(v * (chars.length - 1));
+        // Use actual frequency data per column when mic is active
+        if(micActive && dataArray && dataArray.length){
+          var bin = Math.floor((x / w) * dataArray.length);
+          v = Math.max(v * 0.62, dataArray[Math.max(0, Math.min(dataArray.length-1, bin))] / 255);
+        }
+
+        var idx = Math.max(0, Math.min(chars.length - 1, Math.floor(v * (chars.length - 1))));
         var ch = chars.charAt(idx);
 
-        ctx.fillStyle = paletteColor((v + d * 0.45 + time * 0.05) % 1, 0.18 + v * 0.74);
-        ctx.shadowBlur = (v * 8 + high * 18) * vizDpr * paletteGlowStrength();
-        ctx.shadowColor = paletteColor(v, 0.75);
+        ctx.fillStyle = paletteColor((v + d * 0.45 + time * 0.04) % 1, 0.20 + v * 0.78);
+        ctx.shadowBlur = (v * 5 + high * 12) * vizDpr * paletteGlowStrength();
+        ctx.shadowColor = paletteColor(v, 0.72);
         ctx.fillText(ch, x, y);
       }
     }
+
+    ctx.restore();
     ctx.shadowBlur = 0;
   }
 
-  if(MODE==='plasma'){
-    // Plasma — flowing additive sine-field shader.
-    // Uses shared texture palettes; audio controls warp speed and glow.
+if(MODE==='plasma'){
+    // Plasma — smoother liquid plasma, no hard pixel grid.
+    // SIZE slider controls the sampling scale/detail.
     ctx.globalCompositeOperation='source-over';
-    ctx.fillStyle='rgba(0,0,0,0.20)';
+    ctx.fillStyle='rgba(0,0,0,0.16)';
     ctx.fillRect(0,0,w,h);
 
-    ctx.globalCompositeOperation='lighter';
     var minDim = Math.min(w,h);
-    var time = t * (0.32 + spd * 0.85 + bass * 1.1);
-    var step = IS_MOBILE ? 8 : 6;
-    var amp = 1.0 + bass * 1.4 + mid * 0.55;
+    var time = t * (0.22 + spd * 0.55 + bass * 0.75);
+    var sizeNorm = Math.max(0.35, Math.min(1.8, SIZE / 5));
+    var step = Math.max(3, Math.floor((IS_MOBILE ? 7 : 4) * sizeNorm));
+    var amp = 1.0 + bass * 1.1 + mid * 0.45;
 
-    for(var py=0; py<h; py+=step){
-      for(var px=0; px<w; px+=step){
+    ctx.globalCompositeOperation='lighter';
+
+    for(var py=-step; py<h+step; py+=step){
+      for(var px=-step; px<w+step; px+=step){
         var x = (px - cx) / minDim;
         var y = (py - cy) / minDim;
         var d = Math.sqrt(x*x + y*y);
         var a = Math.atan2(y,x);
 
+        // Domain-warped sine field for liquid motion
+        var warpX = Math.sin(y * 7.0 + time * 1.2) * (0.13 + bass * 0.10);
+        var warpY = Math.cos(x * 6.5 - time * 1.0) * (0.13 + mid * 0.08);
+
+        var xx = x + warpX + Math.sin(d * 8.0 - time) * 0.045;
+        var yy = y + warpY + Math.cos(d * 7.0 + time * 0.8) * 0.045;
+
         var v =
-          Math.sin((x * 11.0 + time * 1.7) * amp) +
-          Math.sin((y * 13.0 - time * 1.35) * amp) +
-          Math.sin((d * 24.0 - time * 2.6 + bass * 3.5)) +
-          Math.cos(a * 5.0 + time * 1.25 + mid * 2.0);
+          Math.sin(xx * 8.5 * amp + time * 1.35) +
+          Math.sin(yy * 9.5 * amp - time * 1.15) +
+          Math.sin((xx + yy) * 8.0 + time * 1.65) +
+          Math.cos(d * 18.0 - time * 2.15 + a * 1.2);
 
-        var q = 0.5 + 0.5 * Math.sin(v * 1.6 + time * 0.8);
-        var alpha = 0.10 + q * 0.28 + bass * 0.08;
+        var q = 0.5 + 0.5 * Math.sin(v * 1.45 + time * 0.45);
+        q = Math.pow(q, 0.82);
 
-        ctx.fillStyle = paletteColor((q + time * 0.06 + d * 0.35) % 1, alpha);
-        ctx.fillRect(px - step, py - step, step * 2.2, step * 2.2);
+        var alpha = 0.09 + q * 0.22 + bass * 0.06;
+        ctx.fillStyle = paletteColor((q + time * 0.045 + d * 0.30) % 1, alpha);
+
+        // overlapping circles blur together visually, making it feel smooth/liquid
+        ctx.beginPath();
+        ctx.arc(px, py, step * (1.25 + q * 1.15 + bass * 0.4), 0, Math.PI * 2);
+        ctx.fill();
       }
     }
 
-    // central bloom
-    var glow = ctx.createRadialGradient(cx, cy, minDim * 0.05, cx, cy, minDim * (0.58 + bass * 0.18));
-    glow.addColorStop(0.0, paletteColor((time * 0.10) % 1, 0.22 + bass * 0.18));
-    glow.addColorStop(0.55, paletteColor((time * 0.10 + 0.35) % 1, 0.10 + mid * 0.10));
+    ctx.globalCompositeOperation='screen';
+
+    var glow = ctx.createRadialGradient(cx, cy, minDim * 0.04, cx, cy, minDim * (0.60 + bass * 0.18));
+    glow.addColorStop(0.0, paletteColor((time * 0.08) % 1, 0.24 + bass * 0.18));
+    glow.addColorStop(0.48, paletteColor((time * 0.08 + 0.34) % 1, 0.11 + mid * 0.11));
     glow.addColorStop(1.0, 'rgba(0,0,0,0)');
     ctx.fillStyle = glow;
     ctx.beginPath();
     ctx.arc(cx, cy, minDim, 0, Math.PI * 2);
     ctx.fill();
-  }
 
-  if(MODE==='liquidrainbow'){
-    // Liquid Rainbow — viscous flowing rainbow shader.
-    // Texture-aware: Rainbow is true spectrum, others remap the liquid flow to selected palette.
-    ctx.globalCompositeOperation='source-over';
-    ctx.fillStyle='rgba(0,0,0,0.18)';
-    ctx.fillRect(0,0,w,h);
-
-    ctx.globalCompositeOperation='lighter';
-    var minDim = Math.min(w,h);
-    var time = t * (0.20 + spd * 0.62 + bass * 0.8);
-    var step = IS_MOBILE ? 7 : 5;
-
-    for(var py=0; py<h; py+=step){
-      for(var px=0; px<w; px+=step){
-        var uvx = (px - cx) / minDim;
-        var uvy = (py - cy) / minDim;
-
-        var swirl =
-          Math.sin(uvy * 8.0 + time * 1.9) * 0.11 +
-          Math.cos(uvx * 7.0 - time * 1.4) * 0.09;
-
-        var x = uvx + Math.sin(uvy * 5.0 + time) * (0.10 + bass * 0.10);
-        var y = uvy + Math.cos(uvx * 5.0 - time) * (0.10 + mid * 0.08);
-
-        var d = Math.sqrt(x*x + y*y);
-        var angle = Math.atan2(y,x);
-
-        var flow =
-          Math.sin((x + swirl) * 9.0 + time * 2.4) +
-          Math.cos((y - swirl) * 10.0 - time * 2.0) +
-          Math.sin(d * 19.0 - time * 3.4 + angle * 2.0);
-
-        var q = (0.5 + 0.5 * Math.sin(flow + time + bass * 3.0));
-        var ribbon = Math.pow(q, 1.4);
-        var alpha = 0.10 + ribbon * 0.30 + high * 0.06;
-
-        ctx.fillStyle = paletteColor((q + angle / 6.28318 + time * 0.07) % 1, alpha);
-        ctx.beginPath();
-        ctx.ellipse(px, py, step * (1.7 + ribbon * 1.5 + bass), step * (1.1 + ribbon), angle + time * 0.2, 0, Math.PI * 2);
-        ctx.fill();
-      }
-    }
-
-    // silky highlights
-    ctx.globalCompositeOperation='screen';
-    for(var band=0; band<8; band++){
-      var y0 = cy + (band - 3.5) * minDim * 0.09 + Math.sin(time + band) * minDim * 0.025;
+    // Soft flowing highlight ribbons
+    for(var band=0; band<5; band++){
+      var y0 = cy + (band - 2) * minDim * 0.12 + Math.sin(time * 0.8 + band) * minDim * 0.045;
       var grad = ctx.createLinearGradient(cx - minDim * 0.55, y0, cx + minDim * 0.55, y0);
-      grad.addColorStop(0.0, 'rgba(0,0,0,0)');
-      grad.addColorStop(0.5, paletteColor((band / 8 + time * 0.05) % 1, 0.12 + bass * 0.10));
-      grad.addColorStop(1.0, 'rgba(0,0,0,0)');
+      grad.addColorStop(0, 'rgba(0,0,0,0)');
+      grad.addColorStop(0.5, paletteColor((band / 5 + time * 0.04) % 1, 0.11 + bass * 0.10));
+      grad.addColorStop(1, 'rgba(0,0,0,0)');
       ctx.strokeStyle = grad;
-      ctx.lineWidth = minDim * (0.012 + bass * 0.01);
+      ctx.lineWidth = minDim * (0.010 + bass * 0.010);
       ctx.beginPath();
-      for(var i=0;i<=90;i++){
-        var p=i/90;
-        var xx = cx - minDim*0.58 + p*minDim*1.16;
-        var yy = y0 + Math.sin(p*Math.PI*5.0 + time*1.2 + band) * minDim * 0.025;
-        if(i===0) ctx.moveTo(xx,yy); else ctx.lineTo(xx,yy);
+      for(var i=0;i<=80;i++){
+        var p=i/80;
+        var x2 = cx - minDim*0.56 + p*minDim*1.12;
+        var y2 = y0 + Math.sin(p*Math.PI*4.0 + time*1.1 + band) * minDim * 0.025;
+        if(i===0) ctx.moveTo(x2,y2); else ctx.lineTo(x2,y2);
       }
       ctx.stroke();
     }
@@ -3107,7 +3123,7 @@ document.addEventListener('keydown',function(e){
   if(key===' '&&MODE==='ripple'){e.preventDefault();fluid.triggerSplat(1.0);}
 
   // Number keys 1-0 + numpad switch modes
-  var numModes=['ripple','liquidmetal','lightning','ascii','plasma','liquidrainbow','bio','orb','metal','osc','fft','lissajous','retrowave','star','iris','pulse','tiedye'];
+  var numModes=['ripple','liquidmetal','lightning','ascii','plasma','bio','orb','metal','osc','fft','lissajous','retrowave','star','iris','pulse','tiedye'];
   var numKey = null;
   if(e.key>='1'&&e.key<='9') numKey = parseInt(e.key)-1;
   if(e.key==='0') numKey = 9;
@@ -3321,7 +3337,7 @@ function animate(){
     fluid.tick(t, sBass, sMid, sHigh, beatVal);
   }
 
-  if(['osc','fft','dots','lissajous','retrowave','star','pulse','liquidmetal','lightning','ascii','plasma','liquidrainbow'].indexOf(MODE)!==-1){
+  if(['osc','fft','dots','lissajous','retrowave','star','pulse','liquidmetal','lightning','ascii','plasma'].indexOf(MODE)!==-1){
     drawExtraVisualizer(t, spd, bloom);
   }
 
@@ -4047,7 +4063,7 @@ var tieDyeSim = (function(){
   };
 
   window.cycleMode = function(direction){
-    var modes = window.autoVJModes || ['ripple','liquidmetal','lightning','ascii','plasma','liquidrainbow','bio','orb','metal','osc','fft','lissajous','retrowave','star','iris','pulse','tiedye'];
+    var modes = window.autoVJModes || ['ripple','liquidmetal','lightning','ascii','plasma','bio','orb','metal','osc','fft','lissajous','retrowave','star','iris','pulse','tiedye'];
     var currentIndex = modes.indexOf(window.MODE);
 
     if (currentIndex < 0) currentIndex = 0;

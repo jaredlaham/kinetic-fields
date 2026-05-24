@@ -1924,53 +1924,92 @@ if(MODE==='lightning'){
   }
 
 if(MODE==='ascii'){
-    // ASCII — fixed and texture-aware.
-    // SIZE slider controls character/pixel scale.
+    // ASCII — performant shader-style character field.
+    // Large cells + no per-character shadow = smooth in Framer.
+    // SIZE slider controls character scale.
     ctx.globalCompositeOperation='source-over';
-    ctx.fillStyle='rgba(0,0,0,0.36)';
+    ctx.fillStyle='rgba(0,0,0,0.34)';
     ctx.fillRect(0,0,w,h);
 
     var minDim = Math.min(w,h);
-    var time = t * (0.45 + spd * 0.9 + high * 0.55);
-    var chars = ' .,:;irsXA253hMHGS#9B&@';
-    var sizeNorm = Math.max(0.1, Math.min(1.6, SIZE / 5));
-    var cell = Math.max(7, Math.floor((IS_MOBILE ? 13 : 11) * sizeNorm * vizDpr));
-    var fontSize = Math.max(8, cell * (0.9 + bass * 0.25));
+    var time = t * (0.38 + spd * 0.75 + high * 0.45);
+    var chars = ' .:-=+*#%@';
+    var sizeNorm = Math.max(0.65, Math.min(2.2, SIZE / 5));
+
+    // Higher SIZE = larger characters/fewer cells.
+    var cell = Math.max(13, Math.floor((IS_MOBILE ? 18 : 16) * sizeNorm * vizDpr));
+    var cols = Math.ceil(w / cell);
+    var rows = Math.ceil(h / cell);
 
     ctx.save();
-    ctx.font = '900 ' + fontSize + 'px monospace';
+    ctx.font = '900 ' + Math.floor(cell * 0.92) + 'px monospace';
     ctx.textAlign = 'center';
     ctx.textBaseline = 'middle';
+    ctx.globalCompositeOperation='lighter';
 
-    for(var y=cell*0.5; y<h+cell; y+=cell){
-      for(var x=cell*0.5; x<w+cell; x+=cell){
+    // One subtle global glow instead of expensive per-glyph shadows.
+    var glow = ctx.createRadialGradient(cx, cy, minDim * 0.05, cx, cy, minDim * (0.62 + bass * 0.16));
+    glow.addColorStop(0.0, paletteColor((time * 0.08) % 1, 0.18 + bass * 0.12));
+    glow.addColorStop(0.55, paletteColor((time * 0.08 + 0.35) % 1, 0.08 + mid * 0.08));
+    glow.addColorStop(1.0, 'rgba(0,0,0,0)');
+    ctx.fillStyle = glow;
+    ctx.beginPath();
+    ctx.arc(cx, cy, minDim, 0, Math.PI * 2);
+    ctx.fill();
+
+    for(var gy=0; gy<rows; gy++){
+      var y = gy * cell + cell * 0.5;
+
+      for(var gx=0; gx<cols; gx++){
+        var x = gx * cell + cell * 0.5;
+
         var ux = (x - cx) / minDim;
         var uy = (y - cy) / minDim;
         var d = Math.sqrt(ux*ux + uy*uy);
         var a = Math.atan2(uy, ux);
 
+        // Cheap shader-like signal: radial rings + diagonal scan + swirl.
         var wave =
-          Math.sin(ux * 13.0 + time * 1.8) +
-          Math.cos(uy * 12.0 - time * 1.4) +
-          Math.sin(d * 24.0 - time * 2.35 + a * 2.0);
+          Math.sin(d * 24.0 - time * 2.6 + bass * 3.2) +
+          Math.sin((ux + uy) * 13.0 + time * 1.7) +
+          Math.cos(a * 4.0 - time * 1.2);
 
-        var audio = bass * 0.42 + mid * 0.22 + high * 0.18;
-        var v = Math.max(0, Math.min(1, 0.5 + 0.5 * Math.sin(wave + audio * 3.2)));
+        var v = 0.5 + 0.5 * Math.sin(wave);
 
-        // Use actual frequency data per column when mic is active
+        // Cheap mic reaction: sample one FFT bin per column only.
         if(micActive && dataArray && dataArray.length){
-          var bin = Math.floor((x / w) * dataArray.length);
-          v = Math.max(v * 0.62, dataArray[Math.max(0, Math.min(dataArray.length-1, bin))] / 255);
+          var bin = Math.floor((gx / Math.max(1, cols - 1)) * (dataArray.length - 1));
+          var av = dataArray[bin] / 255;
+          v = Math.max(v * 0.72, av);
+        } else {
+          v = Math.max(v * 0.78, 0.22 + 0.18 * Math.sin(time + gx * 0.35));
         }
+
+        // Edge fade makes it feel more like a shader object, less like text wallpaper.
+        var edgeFade = Math.max(0, 1.0 - d * 0.85);
+        v = Math.max(0, Math.min(1, v * (0.58 + edgeFade * 0.58) + bass * 0.18));
 
         var idx = Math.max(0, Math.min(chars.length - 1, Math.floor(v * (chars.length - 1))));
         var ch = chars.charAt(idx);
 
-        ctx.fillStyle = paletteColor((v + d * 0.45 + time * 0.04) % 1, 0.20 + v * 0.78);
-        ctx.shadowBlur = (v * 5 + high * 12) * vizDpr * paletteGlowStrength();
-        ctx.shadowColor = paletteColor(v, 0.72);
+        // Skip very dim cells for performance and better contrast.
+        if(idx < 1 && ((gx + gy) % 2 === 0)) continue;
+
+        ctx.fillStyle = paletteColor((v + d * 0.45 + time * 0.04) % 1, 0.18 + v * 0.68);
         ctx.fillText(ch, x, y);
       }
+    }
+
+    // A few smooth scanlines for motion polish.
+    ctx.globalCompositeOperation='screen';
+    for(var s=0; s<4; s++){
+      var sy = (h * ((time * 0.06 + s * 0.25) % 1));
+      var grad = ctx.createLinearGradient(0, sy - cell * 2.0, 0, sy + cell * 2.0);
+      grad.addColorStop(0, 'rgba(0,0,0,0)');
+      grad.addColorStop(0.5, paletteColor((s / 4 + time * 0.08) % 1, 0.08 + high * 0.10));
+      grad.addColorStop(1, 'rgba(0,0,0,0)');
+      ctx.fillStyle = grad;
+      ctx.fillRect(0, sy - cell * 2.0, w, cell * 4.0);
     }
 
     ctx.restore();
@@ -1978,17 +2017,21 @@ if(MODE==='ascii'){
   }
 
 if(MODE==='plasma'){
-    // Plasma — smoother liquid plasma, no hard pixel grid.
-    // SIZE slider controls the sampling scale/detail.
+    // Plasma — performant soft liquid shader-style field.
+    // Less vivid, smoother, closer to the Framer shader reference.
+    // SIZE slider controls softness/detail: higher = larger, smoother blobs.
     ctx.globalCompositeOperation='source-over';
-    ctx.fillStyle='rgba(0,0,0,0.16)';
+    ctx.fillStyle='rgba(0,0,0,0.20)';
     ctx.fillRect(0,0,w,h);
 
     var minDim = Math.min(w,h);
-    var time = t * (0.22 + spd * 0.55 + bass * 0.75);
-    var sizeNorm = Math.max(0.35, Math.min(1.8, SIZE / 5));
-    var step = Math.max(3, Math.floor((IS_MOBILE ? 7 : 4) * sizeNorm));
-    var amp = 1.0 + bass * 1.1 + mid * 0.45;
+    var time = t * (0.16 + spd * 0.34 + bass * 0.42);
+    var sizeNorm = Math.max(0.45, Math.min(2.2, SIZE / 5));
+
+    // Larger step = dramatically faster and smoother.
+    var step = Math.max(9, Math.floor((IS_MOBILE ? 15 : 12) * sizeNorm));
+    var radius = step * (2.15 + bass * 0.55);
+    var amp = 0.82 + bass * 0.55 + mid * 0.22;
 
     ctx.globalCompositeOperation='lighter';
 
@@ -1997,61 +2040,91 @@ if(MODE==='plasma'){
         var x = (px - cx) / minDim;
         var y = (py - cy) / minDim;
         var d = Math.sqrt(x*x + y*y);
-        var a = Math.atan2(y,x);
 
-        // Domain-warped sine field for liquid motion
-        var warpX = Math.sin(y * 7.0 + time * 1.2) * (0.13 + bass * 0.10);
-        var warpY = Math.cos(x * 6.5 - time * 1.0) * (0.13 + mid * 0.08);
+        // Cheap domain warp; smooth movement without dense pixel sampling.
+        var wx = Math.sin(y * 5.2 + time * 1.05) * (0.10 + bass * 0.05);
+        var wy = Math.cos(x * 4.8 - time * 0.85) * (0.10 + mid * 0.04);
 
-        var xx = x + warpX + Math.sin(d * 8.0 - time) * 0.045;
-        var yy = y + warpY + Math.cos(d * 7.0 + time * 0.8) * 0.045;
+        var xx = x + wx;
+        var yy = y + wy;
 
         var v =
-          Math.sin(xx * 8.5 * amp + time * 1.35) +
-          Math.sin(yy * 9.5 * amp - time * 1.15) +
-          Math.sin((xx + yy) * 8.0 + time * 1.65) +
-          Math.cos(d * 18.0 - time * 2.15 + a * 1.2);
+          Math.sin(xx * 6.4 * amp + time * 1.1) +
+          Math.sin(yy * 7.1 * amp - time * 0.95) +
+          Math.sin((xx + yy) * 5.8 + time * 1.2) +
+          Math.cos(d * 12.0 - time * 1.35);
 
-        var q = 0.5 + 0.5 * Math.sin(v * 1.45 + time * 0.45);
-        q = Math.pow(q, 0.82);
+        var q = 0.5 + 0.5 * Math.sin(v * 1.18 + time * 0.28);
 
-        var alpha = 0.09 + q * 0.22 + bass * 0.06;
-        ctx.fillStyle = paletteColor((q + time * 0.045 + d * 0.30) % 1, alpha);
+        // Softer contrast, less vivid.
+        q = Math.pow(q, 1.18);
+        var palettePos = (q * 0.72 + d * 0.20 + time * 0.025) % 1;
+        var alpha = 0.045 + q * 0.135 + bass * 0.035;
 
-        // overlapping circles blur together visually, making it feel smooth/liquid
+        // Vintage and fire can get harsh, so keep alpha low and let overlap build color.
+        ctx.fillStyle = paletteColor(palettePos, alpha);
+
         ctx.beginPath();
-        ctx.arc(px, py, step * (1.25 + q * 1.15 + bass * 0.4), 0, Math.PI * 2);
+        ctx.arc(px, py, radius * (0.82 + q * 0.42), 0, Math.PI * 2);
         ctx.fill();
       }
     }
 
+    // Soft center wash — not too bright.
     ctx.globalCompositeOperation='screen';
 
-    var glow = ctx.createRadialGradient(cx, cy, minDim * 0.04, cx, cy, minDim * (0.60 + bass * 0.18));
-    glow.addColorStop(0.0, paletteColor((time * 0.08) % 1, 0.24 + bass * 0.18));
-    glow.addColorStop(0.48, paletteColor((time * 0.08 + 0.34) % 1, 0.11 + mid * 0.11));
+    var glow = ctx.createRadialGradient(
+      cx,
+      cy,
+      minDim * 0.04,
+      cx,
+      cy,
+      minDim * (0.52 + bass * 0.12)
+    );
+
+    glow.addColorStop(0.0, paletteColor((time * 0.04) % 1, 0.105 + bass * 0.08));
+    glow.addColorStop(0.48, paletteColor((time * 0.04 + 0.28) % 1, 0.060 + mid * 0.05));
     glow.addColorStop(1.0, 'rgba(0,0,0,0)');
+
     ctx.fillStyle = glow;
     ctx.beginPath();
     ctx.arc(cx, cy, minDim, 0, Math.PI * 2);
     ctx.fill();
 
-    // Soft flowing highlight ribbons
-    for(var band=0; band<5; band++){
-      var y0 = cy + (band - 2) * minDim * 0.12 + Math.sin(time * 0.8 + band) * minDim * 0.045;
-      var grad = ctx.createLinearGradient(cx - minDim * 0.55, y0, cx + minDim * 0.55, y0);
+    // Slow liquid ribbons, very subtle.
+    for(var band=0; band<4; band++){
+      var y0 =
+        cy +
+        (band - 1.5) * minDim * 0.14 +
+        Math.sin(time * 0.62 + band) * minDim * 0.035;
+
+      var grad = ctx.createLinearGradient(
+        cx - minDim * 0.55,
+        y0,
+        cx + minDim * 0.55,
+        y0
+      );
+
       grad.addColorStop(0, 'rgba(0,0,0,0)');
-      grad.addColorStop(0.5, paletteColor((band / 5 + time * 0.04) % 1, 0.11 + bass * 0.10));
+      grad.addColorStop(0.5, paletteColor((band / 4 + time * 0.025) % 1, 0.045 + bass * 0.045));
       grad.addColorStop(1, 'rgba(0,0,0,0)');
+
       ctx.strokeStyle = grad;
-      ctx.lineWidth = minDim * (0.010 + bass * 0.010);
+      ctx.lineWidth = minDim * (0.007 + bass * 0.006);
+
       ctx.beginPath();
-      for(var i=0;i<=80;i++){
-        var p=i/80;
+
+      for(var i=0;i<=42;i++){
+        var p=i/42;
         var x2 = cx - minDim*0.56 + p*minDim*1.12;
-        var y2 = y0 + Math.sin(p*Math.PI*4.0 + time*1.1 + band) * minDim * 0.025;
-        if(i===0) ctx.moveTo(x2,y2); else ctx.lineTo(x2,y2);
+        var y2 =
+          y0 +
+          Math.sin(p*Math.PI*3.1 + time*0.75 + band) * minDim * 0.020;
+
+        if(i===0) ctx.moveTo(x2,y2);
+        else ctx.lineTo(x2,y2);
       }
+
       ctx.stroke();
     }
   }

@@ -2361,7 +2361,8 @@ window.addEventListener('load', function() {
   });
   document.getElementById('detailSl').addEventListener('input',  function(e){ DETAIL  = parseInt(e.target.value); });
   document.getElementById('speedSl').addEventListener('input',   function(e){ SPEED   = parseInt(e.target.value); });
-  document.getElementById('sizeSl').addEventListener('input',    function(e){ SIZE    = parseInt(e.target.value); });
+  var legacySizeSl = document.getElementById('sizeSl');
+  if (legacySizeSl) legacySizeSl.addEventListener('input', function(e){ SIZE = parseInt(e.target.value); });
   var chaosSl = document.getElementById('chaosSl');
   if(chaosSl){
     chaosSl.addEventListener('input', function(e){

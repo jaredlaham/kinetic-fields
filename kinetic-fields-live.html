@@ -434,6 +434,8 @@ body::after { content: ''; position: fixed; inset: 0; pointer-events: none; z-in
   <div class="row">
     <span class="row-lbl">MODE</span>
     <button class="t"    id="btn-tiedye" onclick="setMode('tiedye')">◈ TIE DYE</button>
+    <div class="vd"></div>
+    <button class="t" id="btn-pleasures" onclick="setMode('pleasures')">≋ PLEASURES</button>
 <button class="t on" id="btn-ripple" onclick="setMode('ripple')">⌁ FLUID</button>
     <div class="vd"></div>
     <button class="t"    id="btn-liquidmetal" onclick="setMode('liquidmetal')">◒ LIQUID METAL</button>
@@ -612,13 +614,13 @@ var PALETTES = {
     [255, 0, 255]     // Magenta — hue 0.83
   ],
   fire: [
-    [0, 0, 0],
-    [10, 20, 50],
-    [0, 120, 255],
-    [120, 220, 255],
-    [255, 210, 120],
-    [255, 140, 30],
-    [255, 60, 0]
+    [10, 0, 0],
+    [80, 0, 18],
+    [180, 0, 55],
+    [255, 34, 76],
+    [255, 92, 22],
+    [255, 172, 0],
+    [255, 245, 36]
   ],
   electric: [
     [5, 0, 20],
@@ -746,7 +748,7 @@ var autoVJActive = false;
 var autoVJTimer = null;
 var autoVJIndex = 0;
 var autoVJIntervalMs = 12000;
-var autoVJModes = ['tiedye','ripple','lightning','ascii','bio','orb','metal','osc','fft','lissajous','retrowave','star','iris','cube'];
+var autoVJModes = ['tiedye','pleasures','ripple','lightning','ascii','bio','orb','metal','osc','fft','lissajous','retrowave','star','iris','cube'];
 // Metal sphere params
 var M_NOISE   = 1.16;
 var M_DISP    = 0.45;
@@ -768,7 +770,7 @@ var micGainNode = null;
 function setMode(m) {
   MODE = m;
 
-  var twoDModes = ['osc','fft','lissajous','retrowave','star','cube','lightning','ascii'];
+  var twoDModes = ['pleasures','osc','fft','dots','lissajous','retrowave','star','cube','ascii','lightning'];
   var is2D = twoDModes.indexOf(m) !== -1;
 
   var modeButtonIds = {
@@ -776,6 +778,7 @@ function setMode(m) {
     orb: 'btn-orb',
     metal: 'btn-metal',
     ripple: 'btn-ripple',
+    pleasures: 'btn-pleasures',
     liquidmetal: 'btn-liquidmetal',
     lightning: 'btn-lightning',
     ascii: 'btn-ascii',
@@ -932,24 +935,27 @@ function setTex(n) {
     }
   }
 
-  // Fluid engine behavior preset. Color family is unified in all 2D modes.
-  var fluidMap = ['auto','haxiomic','cosmic','acid','mono'];
+  // Keep Fluid aligned with the global texture index:
+  // 0 Rainbow, 1 Fire, 2 Electric, 3 Prism, 4 Neon, 5 UV, 6 Vintage.
   if (typeof liquidMetalGLMode !== 'undefined' && liquidMetalGLMode.resetPalette) liquidMetalGLMode.resetPalette();
 
   if (typeof fluid !== 'undefined' && fluid && fluid.setColor) {
-    fluid.setColor(fluidMap[TEX]);
-    ['auto','cosmic','haxiomic','acid','mono'].forEach(function(nm,i){
+    fluid.setColor(TEX);
+    ['rainbow','fire','electric','prism','neon','uv','vintage'].forEach(function(nm,i){
       var fc = document.getElementById('fc'+i);
-      if (fc) fc.classList.toggle('on', nm === fluidMap[TEX]);
+      if (fc) fc.classList.toggle('on', i === TEX);
     });
   }
 }
 
 function setFluidColor(m){
-  fluid.setColor(m);
-  ['auto','cosmic','haxiomic','acid','mono'].forEach(function(n,i){
+  var map={rainbow:0,fire:1,electric:2,prism:3,neon:4,uv:5,vintage:6,auto:0,haxiomic:2,cosmic:3,acid:4,mono:6};
+  var idx = typeof m === 'number' ? m : (map[m] !== undefined ? map[m] : 0);
+  TEX = Math.max(0, Math.min(6, idx));
+  fluid.setColor(TEX);
+  ['rainbow','fire','electric','prism','neon','uv','vintage'].forEach(function(n,i){
     var el=document.getElementById('fc'+i);
-    if(el)el.classList.toggle('on',n===m);
+    if(el)el.classList.toggle('on',i===TEX);
   });
 }
 
@@ -1412,13 +1418,14 @@ function hsl(h,s,l,a){
   return paletteHslFallback(h, s, l, a);
 }
 
+
 function getVisualSizeScale(){
   var mode = (typeof VISUAL_SIZE_MODE !== 'undefined') ? VISUAL_SIZE_MODE : 'medium';
-  if(mode === 'small') return 0.75;
-  if(mode === 'medium') return 1.0;
+  if(mode === 'small') return 0.70;
+  if(mode === 'medium') return 1.00;
   if(mode === 'large') return 1.45;
-  if(mode === '3x') return 2.25;
-  return 1.0;
+  if(mode === '3x') return 2.35;
+  return 1.00;
 }
 
 function getVisualizerShape(){
@@ -1426,7 +1433,8 @@ function getVisualizerShape(){
 }
 
 function getGlobalSpeedScale(){
-  return Math.max(0.08, Math.min(1.8, (typeof SPEED !== 'undefined' ? SPEED : 5) / 5));
+  var s = (typeof SPEED !== 'undefined' ? SPEED : 5);
+  return Math.max(0.03, Math.min(2.4, 0.06 + (s / 10) * 2.34));
 }
 
 function drawExtraVisualizer(t, spd, bloom){
@@ -1745,7 +1753,7 @@ function drawExtraVisualizer(t, spd, bloom){
       ctx.shadowBlur = (5 + flash * 20) * vizDpr;
       ctx.shadowColor = paletteColor(1.0, 1);
       ctx.strokeStyle = paletteColor(0.98, 0.88 * alpha);
-      ctx.lineWidth = Math.max(1, thick * 0.82 * vizDpr);
+      ctx.lineWidth = Math.max(1, (1.0 + globalSize * 0.45) * vizDpr);
       ctx.beginPath();
       points.forEach(function(pt,idx){ if(idx===0) ctx.moveTo(pt.x,pt.y); else ctx.lineTo(pt.x,pt.y); });
       ctx.stroke();
@@ -1793,7 +1801,7 @@ function drawExtraVisualizer(t, spd, bloom){
       pB.x,
       pB.y,
       strikeId * 19.19,
-      1.25 + bass * 5.5 + high * 1.2,
+      (0.85 + globalSize * 0.35) + bass * 3.2 + high * 0.8,
       0.70 + flash * 0.60,
       true
     );
@@ -1817,6 +1825,105 @@ function drawExtraVisualizer(t, spd, bloom){
     ctx.shadowBlur = 0;
   }
 
+if(MODE==='pleasures'){
+    // Unknown Pleasures / Joy Division-inspired ridge visualizer.
+    // Inspired by Pouria's WebGL experiment, but implemented as a fast Canvas 2D mode.
+    ctx.globalCompositeOperation='source-over';
+    ctx.fillStyle='rgba(0,0,0,0.34)';
+    ctx.fillRect(0,0,w,h);
+
+    var sizeScale = (typeof getVisualSizeScale === 'function') ? getVisualSizeScale() : 1.0;
+    var shapeAmt = (typeof getVisualizerShape === 'function') ? getVisualizerShape() : 0.5;
+    var speedAmt = (typeof getGlobalSpeedScale === 'function') ? getGlobalSpeedScale() : 1.0;
+
+    var lines = Math.floor((IS_MOBILE ? 34 : 46) / Math.max(0.78, sizeScale * 0.62));
+    lines = Math.max(22, Math.min(58, lines));
+
+    var samples = IS_MOBILE ? 96 : 150;
+    var marginX = w * 0.13;
+    var plotW = w - marginX * 2.0;
+    var top = h * 0.16;
+    var bottom = h * 0.86;
+    var rowGap = (bottom - top) / lines;
+    var time = t * (0.08 + spd * 0.42 * speedAmt);
+    var audioLevel = bass * 0.52 + mid * 0.32 + high * 0.16;
+
+    ctx.save();
+    ctx.lineCap='round';
+    ctx.lineJoin='round';
+
+    for(var li=0; li<lines; li++){
+      var yBase = top + li * rowGap;
+      var depth = li / Math.max(1, lines - 1);
+      var ampBase = rowGap * (1.35 + sizeScale * 0.25);
+      var centerBoost = Math.sin(depth * Math.PI);
+      var amp = ampBase * (0.75 + centerBoost * (2.2 + shapeAmt * 1.5) + audioLevel * 1.35);
+
+      var points = [];
+
+      for(var si=0; si<=samples; si++){
+        var p = si / samples;
+        var x = marginX + p * plotW;
+        var nx = (p - 0.5) * 2.0;
+
+        var g1 = Math.exp(-Math.pow(nx * (2.25 - shapeAmt * 0.55), 2.0));
+        var g2 = Math.exp(-Math.pow((nx - 0.18) * 4.2, 2.0)) * 0.45;
+        var g3 = Math.exp(-Math.pow((nx + 0.23) * 5.0, 2.0)) * 0.34;
+        var mound = g1 + g2 + g3;
+
+        var fft = 0;
+        if(micActive && dataArray && dataArray.length){
+          var bin = Math.floor(Math.pow(p, 1.65) * (dataArray.length - 1));
+          fft = dataArray[Math.max(0, Math.min(dataArray.length-1, bin))] / 255;
+        } else {
+          fft = 0.16 + 0.12 * Math.sin(time * 1.6 + p * 11.0 + li * 0.43);
+        }
+
+        var ripple =
+          Math.sin(p * Math.PI * (8.0 + shapeAmt * 10.0) + li * 0.31 - time * (0.35 + speedAmt * 3.2)) * 0.12 +
+          Math.sin(p * Math.PI * (17.0 + shapeAmt * 7.0) - time * (0.25 + speedAmt * 2.4) + li * 0.67) * 0.055;
+
+        var jag = (fft * 0.55 + audioLevel * 0.18) * (0.55 + mound * 1.35);
+        var y = yBase - amp * (mound * (0.33 + jag) + ripple * (0.45 + fft));
+        points.push([x,y]);
+      }
+
+      ctx.beginPath();
+      ctx.moveTo(marginX, h + 10);
+      for(var pi=0; pi<points.length; pi++) ctx.lineTo(points[pi][0], points[pi][1]);
+      ctx.lineTo(marginX + plotW, h + 10);
+      ctx.closePath();
+      ctx.fillStyle = 'rgba(0,0,0,0.92)';
+      ctx.fill();
+
+      var alpha = 0.42 + depth * 0.46;
+      ctx.strokeStyle = TEX === 0 ? 'rgba(255,255,255,' + alpha + ')' : paletteColor((depth + time * 0.02) % 1, alpha);
+      ctx.lineWidth = Math.max(1, (1.05 + sizeScale * 0.22) * vizDpr);
+
+      ctx.beginPath();
+      for(var pj=0; pj<points.length; pj++){
+        if(pj===0) ctx.moveTo(points[pj][0], points[pj][1]);
+        else ctx.lineTo(points[pj][0], points[pj][1]);
+      }
+      ctx.stroke();
+    }
+
+    ctx.globalCompositeOperation='overlay';
+    var grains = IS_MOBILE ? 280 : 520;
+    var seed = Math.floor(t * 18.0);
+    for(var g=0; g<grains; g++){
+      var rn = Math.sin((g*12.9898 + seed*78.233)*0.017)*43758.5453;
+      rn = rn - Math.floor(rn);
+      var rn2 = Math.sin((g*91.113 + seed*17.77)*0.013)*24634.6345;
+      rn2 = rn2 - Math.floor(rn2);
+      var ga = (Math.sin(g*1.7 + seed)*0.5+0.5)*0.05;
+      ctx.fillStyle = g % 2 === 0 ? 'rgba(255,255,255,'+ga+')' : 'rgba(0,0,0,'+(ga*0.9)+')';
+      ctx.fillRect(rn*w, rn2*h, IS_MOBILE ? 2 : 1.25, IS_MOBILE ? 2 : 1.25);
+    }
+
+    ctx.restore();
+  }
+
 if(MODE==='ascii'){
     // ASCII — performant shader-style character field.
     // Large cells + no per-character shadow = smooth in Framer.
@@ -1828,10 +1935,10 @@ if(MODE==='ascii'){
     var minDim = Math.min(w,h);
     var time = t * (0.38 + spd * 0.75 + high * 0.45);
     var chars = shapeAmt < 0.33 ? ' .:-=+*#%@' : (shapeAmt < 0.66 ? ' .,:;irsXA253hMHGS#9B&@' : ' ▁▂▃▄▅▆▇█');
-    var sizeNorm = VISUAL_SIZE_MODE === 'small' ? 0.85 : (VISUAL_SIZE_MODE === 'medium' ? 1.35 : (VISUAL_SIZE_MODE === 'large' ? 2.15 : 3.25));
+    var sizeNorm = globalSize;
 
     // Higher SIZE = larger characters/fewer cells.
-    var cell = Math.max(18, Math.floor((IS_MOBILE ? 22 : 20) * sizeNorm * vizDpr));
+    var cell = Math.max(12, Math.floor((IS_MOBILE ? 18 : 16) * sizeNorm * vizDpr));
     var cols = Math.ceil(w / cell);
     var rows = Math.ceil(h / cell);
 
@@ -1866,7 +1973,7 @@ if(MODE==='ascii'){
         var wave =
           Math.sin(d * 24.0 - time * 2.6 + bass * 3.2) +
           Math.sin((ux + uy) * 13.0 + time * 1.7) +
-          Math.cos(a * 4.0 - time * 1.2);
+          Math.cos(a * 4.0 - time * (0.25 + speedAmt * 2.4));
 
         var v = 0.5 + 0.5 * Math.sin(wave);
 
@@ -1920,7 +2027,7 @@ if(MODE==='cube'){
 
     var time = t * (0.55 + spd * 1.15 + bass * 2.35 + mid * 0.8);
     var minDim = Math.min(w, h);
-    var cubeScale = 0.58 + bass * 0.38 + mid * 0.16;
+    var cubeScale = (0.34 + globalSize * 0.22) + bass * 0.18 + mid * 0.08;
     var cubeSize = minDim * cubeScale;
     var half = cubeSize * 0.5;
     var cx2 = cx + Math.sin(time * 0.42) * minDim * 0.025 * high;
@@ -2120,7 +2227,7 @@ window.addEventListener('load', function() {
   document.getElementById('detailSl').addEventListener('input',  function(e){ DETAIL  = parseInt(e.target.value); });
   var shapeSl = document.getElementById('shapeSl');
   if (shapeSl) shapeSl.addEventListener('input', function(e){ SHAPE = parseInt(e.target.value); });
-  document.getElementById('speedSl') && document.getElementById('speedSl').addEventListener('input',   function(e){ SPEED   = parseInt(e.target.value); });
+  var speedSlEl=document.getElementById('speedSl'); if(speedSlEl) speedSlEl.addEventListener('input',   function(e){ SPEED   = parseInt(e.target.value); });
   var legacySizeSl = document.getElementById('sizeSl');
   if (legacySizeSl) legacySizeSl.addEventListener('input', function(e){ SIZE = parseInt(e.target.value); });
   var chaosSl = document.getElementById('chaosSl');
@@ -2820,16 +2927,40 @@ void main(){
     albedo = mix(albedo * .55, texPal(paletteFlow + .33), fresnel*.55 + high*.12);
   }
   else if(uMetalType==5){
-    // RAINBOW/VINTAGE behavior: broader surface bands.
-    albedo = mix(albedo, texPal(vWorldPos.y*.18 + uTime*.035 + d*.25), .38);
+    // IRIDESCENT RAINBOW METAL:
+    // Full spectral sweep across the sphere with oil-slick chrome behavior.
+    float rainbowFlow =
+      vWorldPos.y * .42 +
+      vWorldPos.x * .24 +
+      d * .55 +
+      fresnel * .95 +
+      uTime * (.045 + uSpeed * .03);
+
+    vec3 rainbowA = texPal(rainbowFlow);
+    vec3 rainbowB = texPal(rainbowFlow + .18 + fresnel * .22);
+    vec3 rainbowC = texPal(rainbowFlow + .52);
+
+    // Strong spectral layering.
+    albedo = mix(rainbowA, rainbowB, fresnel * .75);
+    albedo = mix(albedo, rainbowC, sat(vDistort * 1.8) * .45);
+
+    // Chrome iridescence.
+    vec3 chrome = vec3(.82,.84,.92);
+    albedo = mix(chrome, albedo, .82);
+
+    // Strong edge-spectrum highlights.
+    albedo += rainbowB * pow(fresnel, 2.4) * 1.15;
+
+    // Thin-film interference style shimmer.
+    albedo += texPal(rainbowFlow + sin(uTime*.12 + d*9.0)*.08) * .18;
   }
 
   // metal lighting, kept intentionally simple to avoid shader compatibility problems
   vec3 envTop = mix(vec3(.08,.10,.16), vec3(.68,.82,1.0), sat(N.y*.5+.5));
   vec3 envWarm = texPal(.12 + paletteFlow*.2) * pow(max(dot(reflect(-V,N), normalize(vec3(-.8,.2,1.0))),0.0), 22.0);
   vec3 spec = vec3(1.0) * key * (1.1 + uMetalness);
-  spec += texPal(paletteFlow + .35) * fill * .65;
-  spec += texPal(paletteFlow + .62) * rimLight * .35;
+  spec += texPal(paletteFlow + .35 + fresnel*.25) * fill * 1.05;
+  spec += texPal(paletteFlow + .62 + fresnel*.15) * rimLight * .78;
 
   vec3 col = albedo * (envTop*.45 + .18) + spec + envWarm*.35;
   col += albedo * fresnel * (.35 + uMetalness*.45);
@@ -3008,7 +3139,7 @@ document.addEventListener('keydown',function(e){
   if(key===' '&&MODE==='ripple'){e.preventDefault();fluid.triggerSplat(1.0);}
 
   // Number keys 1-0 + numpad switch modes
-  var numModes = ['tiedye','ripple','lightning','ascii','bio','orb','metal','osc','fft','lissajous','retrowave','star','iris','cube'];
+  var numModes = ['tiedye','pleasures','ripple','lightning','ascii','bio','orb','metal','osc','fft','lissajous','retrowave','star','iris','cube'];
   var numKey = null;
   if(e.key>='1'&&e.key<='9') numKey = parseInt(e.key)-1;
   if(e.key==='0') numKey = 9;
@@ -3306,7 +3437,7 @@ void main(){
     gl.vertexAttribPointer(uniforms.aPos, 2, gl.FLOAT, false, 0, 0);
 
     var speedNorm = Math.max(0.0, Math.min(1.0, speed || 0.3));
-    var liquidTimeScale = 0.004 + speedNorm * 0.009 + (bass || 0) * 0.000275 + (mid || 0) * 0.0001 + (high || 0) * 0.00005;
+    var liquidTimeScale = 0.0008 + speedNorm * getGlobalSpeedScale() * 0.006 + (bass || 0) * 0.000275 + (mid || 0) * 0.0001 + (high || 0) * 0.00005;
     gl.uniform1f(uniforms.time, (t || 0) * liquidTimeScale * 1000.0);
 
     var sizeMode = (typeof VISUAL_SIZE_MODE !== 'undefined') ? VISUAL_SIZE_MODE : 'medium';
@@ -3398,14 +3529,14 @@ function animate(){
     gl.uniform1f(oU.uTime,t);
     gl.uniform1f(oU.uBass,sBass); gl.uniform1f(oU.uMid,sMid); gl.uniform1f(oU.uHigh,sHigh);
     gl.uniform1f(oU.uFreq,sFreq); gl.uniform1f(oU.uDetail,(DETAIL*.45+.4) * (0.75 + getVisualizerShape()*0.75));
-    gl.uniform1f(oU.uSpeed,(spd+sBass*.6) * getGlobalSpeedScale()); gl.uniform1f(oU.uIdle,idle);
+    gl.uniform1f(oU.uSpeed,(0.04 + spd * 1.8) * getGlobalSpeedScale() + sBass*.25); gl.uniform1f(oU.uIdle,idle);
     gl.uniform1i(oU.uTex,TEX);
     if(WIRE){gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER,wireBuf);gl.drawElements(gl.LINES,geo.wire.length,gl.UNSIGNED_SHORT,0);}
     else{gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER,triBuf);gl.drawElements(gl.TRIANGLES,geo.tri.length,gl.UNSIGNED_SHORT,0);}
     // Bloom glow pass
     if(bloom>.05){
       gl.enable(gl.BLEND);gl.blendFunc(gl.SRC_ALPHA,gl.ONE);
-      var sc=1+bloom*.04;
+      var sc=(1+bloom*.04) * (0.78 + getVisualSizeScale()*0.22);
       var gm=m4mul(mvp,new Float32Array([sc,0,0,0,0,sc,0,0,0,0,sc,0,0,0,0,1]));
       gl.uniformMatrix4fv(oU.uMVP,false,gm);
       gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER,wireBuf);
@@ -3428,7 +3559,7 @@ function animate(){
     gl.uniform1f(mU.uTime,t);
     gl.uniform1f(mU.uBass,mBassSm); gl.uniform1f(mU.uMid,mMidSm); gl.uniform1f(mU.uHigh,mHighSm);
     gl.uniform1f(mU.uIdle,idle);
-    gl.uniform1f(mU.uSpeed,(spd+mBassSm*.15) * getGlobalSpeedScale());
+    gl.uniform1f(mU.uSpeed,(0.03 + spd * 1.45) * getGlobalSpeedScale() + mBassSm*.08);
 
     // Noise density from M_NOISE slider
     var density = M_NOISE * (1.0 + getVisualizerShape()*1.25);
@@ -3485,7 +3616,7 @@ function animate(){
     gl.enableVertexAttribArray(iAPos);
     gl.vertexAttribPointer(iAPos, 2, gl.FLOAT, false, 0, 0);
 
-    var iSpeed = spd * getGlobalSpeedScale() * (0.75 + (idle > 0.5 ? 0.0 : sBass * 0.5));
+    var iSpeed = (0.02 + spd * 1.35) * getGlobalSpeedScale() * (0.75 + (idle > 0.5 ? 0.0 : sBass * 0.18));
 
     // Heavy analog grain overlay for IRIS mode
     if(MODE==='iris'){
@@ -3542,23 +3673,40 @@ function animate(){
     catch(e) { console.warn('liquidMetalGLMode.tick error:', e); }
   }
 
+
+  // Bio size bridge
+  if(MODE==='bio' && typeof bioSim !== 'undefined'){
+    try { if(typeof bioSim.setPixelSize === 'function') bioSim.setPixelSize(Math.max(1, Math.min(4, Math.round(getVisualSizeScale()*1.5)))); } catch(e) {}
+  }
+
   // ── BIOLUMINESCENCE ───────────────────────────────────────
   if(MODE==='bio' && typeof bioSim !== 'undefined'){
-    try { bioSim.tick(t, sBass, sMid, sHigh, spd * getGlobalSpeedScale(), bloom); }
+    try { bioSim.tick(t * (0.08 + getGlobalSpeedScale() * 1.8), sBass, sMid, sHigh, spd * getGlobalSpeedScale(), bloom); }
     catch(e) { console.warn('bioSim.tick error:', e); }
   }
 
   // ── TIE DYE ──────────────────────────────────────────────
   if(MODE==='tiedye' && typeof tieDyeSim !== 'undefined'){
-    try { tieDyeSim.tick(t, sBass, sMid, sHigh, spd * getGlobalSpeedScale()); }
+    try { tieDyeSim.tick(t * (0.08 + getGlobalSpeedScale() * 1.9), sBass, sMid, sHigh, spd * getGlobalSpeedScale()); }
     catch(e) { console.warn('tieDyeSim.tick error:', e); }
   }
 
   // Global control bridge for Fluid mode
-  if(MODE==='ripple' && typeof fluid !== 'undefined'){
+  // Global speed bridge for fluid
+  var fluidSpeed = getGlobalSpeedScale();
+if(MODE==='ripple' && typeof fluid !== 'undefined'){
     try {
       if(typeof fluid.setSize === 'function') fluid.setSize(18 + getVisualSizeScale() * 24);
       if(typeof fluid.setDensity === 'function') fluid.setDensity(18 + getVisualizerShape() * 70);
+    } catch(e) {}
+  }
+
+
+  // Global size bridge for all modes with external renderers.
+  if(MODE==='ripple' && typeof fluid !== 'undefined'){
+    try {
+      if(typeof fluid.setSize === 'function') fluid.setSize(14 + getVisualSizeScale() * 30);
+      if(typeof fluid.setPixelSize === 'function') fluid.setPixelSize(Math.max(1, Math.min(4, Math.round(getVisualSizeScale() * 1.4))));
     } catch(e) {}
   }
 
@@ -3569,7 +3717,7 @@ function animate(){
     fluid.tick(t, sBass, sMid, sHigh, beatVal);
   }
 
-  if(['osc','fft','dots','lissajous','retrowave','star','cube','lightning','ascii'].indexOf(MODE)!==-1){
+  if(['pleasures','osc','fft','dots','lissajous','retrowave','star','cube','ascii','lightning'].indexOf(MODE)!==-1){
     drawExtraVisualizer(t, spd, bloom);
   }
 
@@ -3632,13 +3780,20 @@ var bioSim = (function(){
   // Palette: slow-particle color, fast-particle color, per-channel screen decay rate
   // Decay rates from haxiomic: r*0.9797, g*0.9494, b*0.9696 for cyan/purple look
   var PALETTES=[
-    {s:[40.4/300,0.0/300,35.0/300], f:[0.2/100,47.8/100,1.0],   d:[0.9797,0.9494,0.9696]}, // RAINBOW
-    {s:[0.35,0.02,0.0],             f:[1.0,0.55,0.05],            d:[0.9790,0.9450,0.9500]}, // FIRE
-    {s:[0.0,0.05,0.30],             f:[0.0,0.55,1.0],             d:[0.9750,0.9600,0.9820]}, // ELECTRIC
-    {s:[0.12,0.05,0.22],            f:[0.8,0.7,1.0],              d:[0.9800,0.9750,0.9850]}, // PRISM
-    {s:[0.0,0.15,0.02],             f:[0.3,1.0,0.1],              d:[0.9720,0.9800,0.9600]}, // NEON
-    {s:[0.20,0.0,0.25],             f:[0.9,0.2,1.0],              d:[0.9780,0.9520,0.9850]}, // VIOLET
-    {s:[0.02,0.0,0.08],             f:[0.0,0.9,0.83],             d:[0.9760,0.9440,0.9820]}, // UV: navy→cyan→magenta
+    // RAINBOW — true spectrum motion, slow/fast/decay
+    {s:[1.00,0.00,0.00], f:[0.00,0.90,1.00], d:[0.06,0.03,0.16]},
+    // FIRE — saturated yellow / orange / pinkish-red
+    {s:[1.00,0.14,0.30], f:[1.00,0.96,0.08], d:[0.16,0.00,0.03]},
+    // ELECTRIC — cyan/lime/ orange
+    {s:[0.28,0.86,1.00], f:[0.88,1.00,0.10], d:[0.02,0.00,0.10]},
+    // PRISM — glassy spectral pastel
+    {s:[0.55,0.86,1.00], f:[1.00,0.47,0.90], d:[0.00,0.00,0.04]},
+    // NEON — RGB nightclub glow
+    {s:[0.00,1.00,0.67], f:[1.00,0.24,0.86], d:[0.02,0.02,0.02]},
+    // UV — blacklight violet/cyan/magenta
+    {s:[0.47,0.00,1.00], f:[0.00,0.86,1.00], d:[0.00,0.00,0.02]},
+    // VINTAGE — muted teal/cream/orange ink
+    {s:[0.31,0.67,0.59], f:[1.00,0.71,0.24], d:[0.06,0.10,0.27]}
   ];
 
   // ── GLSL ─────────────────────────────────────────────────────────────
@@ -4071,7 +4226,13 @@ var bioSim = (function(){
         canvas.removeEventListener('touchstart',onDown);
       }
     },
-    setColor:function(i){curPalette=Math.max(0,Math.min(PALETTES.length-1,i));},
+    setColor:function(i){
+      if(typeof i === 'string'){
+        var map={rainbow:0,fire:1,electric:2,prism:3,neon:4,uv:5,vintage:6,auto:0,cosmic:3,haxiomic:2,acid:4,mono:6};
+        i = map[i] !== undefined ? map[i] : 0;
+      }
+      curPalette=Math.max(0,Math.min(PALETTES.length-1,parseInt(i,10)||0));
+    },
     setPixelSize:function(n){pixelSize=Math.max(1,Math.min(4,n));},
     tick:function(t,bass,mid,high,spd,bloom){
       if(!booted||!active)return;
@@ -4164,7 +4325,7 @@ var tieDyeSim = (function(){
   var QFS=[
     'precision highp float;',
     'uniform vec2  u_res;',
-    'uniform float u_time,u_audio,u_speed;',
+    'uniform float u_time,u_audio,u_speed,u_size;',
     'uniform vec3  u_c0,u_c1,u_c2,u_c3,u_c4;',
     'vec2 hash(vec2 p){p=vec2(dot(p,vec2(127.1,311.7)),dot(p,vec2(269.5,183.3)));return -1.0+2.0*fract(sin(p)*43758.5453123);}',
     'float noise(vec2 p){vec2 i=floor(p);vec2 f=fract(p);vec2 u=f*f*(3.0-2.0*f);return mix(mix(dot(hash(i),f),dot(hash(i+vec2(1,0)),f-vec2(1,0)),u.x),mix(dot(hash(i+vec2(0,1)),f-vec2(0,1)),dot(hash(i+vec2(1,1)),f-vec2(1,1)),u.x),u.y);}',
@@ -4174,7 +4335,7 @@ var tieDyeSim = (function(){
     '  vec2 uv=gl_FragCoord.xy/u_res.xy;',
     '  uv.x*=u_res.x/u_res.y;',
     '  float time=u_time*0.075*u_speed;',
-    '  vec2 p=uv*1.85;',
+    '  vec2 p=uv*(1.15 + 1.15/u_size);',
     '  p.x-=time;',
     '  float n1=fbm(p*0.95+vec2(time*0.45,0.));',
     '  float n2=fbm(p*1.45-vec2(0.,time*0.25));',
@@ -4238,7 +4399,8 @@ var tieDyeSim = (function(){
       gl.uniform2f(gl.getUniformLocation(prog,'u_res'),W,H);
       gl.uniform1f(gl.getUniformLocation(prog,'u_time'),t);
       gl.uniform1f(gl.getUniformLocation(prog,'u_audio'),smoothAudio);
-      gl.uniform1f(gl.getUniformLocation(prog,'u_speed'),0.6+spd*0.8);
+      gl.uniform1f(gl.getUniformLocation(prog,'u_speed'),0.08 + spd * getGlobalSpeedScale());
+      gl.uniform1f(gl.getUniformLocation(prog,'u_size'), (typeof getVisualSizeScale==='function'?getVisualSizeScale():1.0));
       gl.uniform3fv(gl.getUniformLocation(prog,'u_c0'),c[0]);
       gl.uniform3fv(gl.getUniformLocation(prog,'u_c1'),c[1]);
       gl.uniform3fv(gl.getUniformLocation(prog,'u_c2'),c[2]);

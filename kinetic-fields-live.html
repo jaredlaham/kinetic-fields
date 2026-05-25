@@ -1014,6 +1014,12 @@ function setVisualSize(mode) {
   if (m)  m.classList.toggle('on', mode === 'medium');
   if (l)  l.classList.toggle('on', mode === 'large');
   if (x3) x3.classList.toggle('on', mode === '3x');
+
+  // Keep Bioluminescence pixel-size function active.
+  if (typeof bioSim !== 'undefined' && bioSim && typeof bioSim.setPixelSize === 'function') {
+    var px = mode === 'small' ? 1 : (mode === 'medium' ? 2 : (mode === 'large' ? 3 : 4));
+    bioSim.setPixelSize(px);
+  }
 }
 
 
@@ -1575,8 +1581,8 @@ function drawExtraVisualizer(t, spd, bloom){
     var actualPitch = w / bars;
     var drawW = Math.max(1, Math.min(barPx, actualPitch));
 
-    var baseY = h * 0.82;
-    var maxH = h * 0.62;
+    var baseY = h * 0.50;
+    var maxH = h * 0.42;
     var time = t * (0.05 + speedAmt * 0.7);
 
     ctx.save();
@@ -1598,7 +1604,7 @@ function drawExtraVisualizer(t, spd, bloom){
       var bh = Math.max(2, eased * maxH * (0.38 + Math.sin(p * Math.PI) * 0.72));
 
       var x = i * actualPitch;
-      var y = baseY - bh;
+      var y = baseY - bh * 0.5;
 
       var alpha = 0.42 + eased * 0.54;
       ctx.fillStyle = smoothPaletteColor((p + time * 0.035 + eased * 0.12) % 1, alpha);
@@ -1607,7 +1613,7 @@ function drawExtraVisualizer(t, spd, bloom){
 
       // mirrored ghost for fuller stage look
       ctx.fillStyle = smoothPaletteColor((p + 0.18 + time * 0.025) % 1, alpha * 0.16);
-      ctx.fillRect(x, baseY, drawW, bh * 0.28);
+      ctx.fillRect(x, baseY, drawW, bh * 0.16);
     }
 
     // subtle horizontal scan line
@@ -1633,7 +1639,7 @@ function drawExtraVisualizer(t, spd, bloom){
     var actualPitch = w / bars;
     var drawW = Math.max(1, Math.min(barPx, actualPitch));
 
-    var horizon = h * 0.54;
+    var horizon = h * 0.50;
     var floorY = h * 0.92;
     var time = t * (0.035 + speedAmt * 0.55);
     var audioLevel = bass * 0.55 + mid * 0.28 + high * 0.17;
@@ -1685,8 +1691,8 @@ function drawExtraVisualizer(t, spd, bloom){
         amp = Math.max(0, Math.min(1, amp));
       }
 
-      var topY = horizon + Math.pow(centerPull, 1.8) * h * 0.18 - amp * h * 0.18;
-      var bottomY = floorY;
+      var topY = horizon - amp * h * 0.30 - (1.0-centerPull) * h * 0.06;
+      var bottomY = horizon;
       var alpha = 0.24 + amp * 0.48 + (1-centerPull) * 0.08;
 
       var grad = ctx.createLinearGradient(x, topY, x, bottomY);
@@ -1868,6 +1874,124 @@ function drawExtraVisualizer(t, spd, bloom){
     }
 
     ctx.shadowBlur = 0;
+  }
+
+
+  if(MODE==='lissajous'){
+    // Arc Reactor — restored Canvas 2D renderer.
+    ctx.globalCompositeOperation='source-over';
+    ctx.fillStyle='rgba(0,0,0,0.24)';
+    ctx.fillRect(0,0,w,h);
+
+    var minDim = Math.min(w,h);
+    var sizeScale = (typeof getVisualSizeScale === 'function') ? getVisualSizeScale() : 1;
+    var shapeAmt = (typeof getVisualizerShape === 'function') ? getVisualizerShape() : 0.5;
+    var speedAmt = (typeof getGlobalSpeedScale === 'function') ? getGlobalSpeedScale() : 1;
+    var time = t * (0.18 + speedAmt * 0.95);
+
+    var radius = minDim * (0.18 + sizeScale * 0.10);
+    var rings = 3 + Math.floor(shapeAmt * 4);
+    var audioLevel = bass * 0.55 + mid * 0.30 + high * 0.15;
+
+    ctx.save();
+    ctx.translate(cx, cy);
+    ctx.globalCompositeOperation='screen';
+
+    for(var r=0; r<rings; r++){
+      var rr = radius * (0.72 + r * 0.16 + audioLevel * 0.04);
+      ctx.strokeStyle = smoothPaletteColor((r/rings + time*0.025) % 1, 0.20 + r*0.08 + audioLevel*0.15);
+      ctx.lineWidth = Math.max(1, (1.0 + sizeScale * 0.6 - r*0.12) * vizDpr);
+      ctx.beginPath();
+      ctx.arc(0,0,rr,0,Math.PI*2);
+      ctx.stroke();
+    }
+
+    // Lissajous core
+    ctx.lineWidth = Math.max(1.2, (1.4 + sizeScale * 0.75) * vizDpr);
+    ctx.strokeStyle = smoothPaletteColor((0.58 + time*0.04) % 1, 0.82);
+    ctx.shadowBlur = (18 + bloom * 30) * vizDpr;
+    ctx.shadowColor = smoothPaletteColor((0.58 + time*0.04) % 1, 0.95);
+    ctx.beginPath();
+
+    var points = 420;
+    var a = 3 + Math.floor(shapeAmt * 4);
+    var b = 2 + Math.floor(shapeAmt * 5);
+    var phase = time * (0.7 + audioLevel * 0.4);
+
+    for(var i=0;i<=points;i++){
+      var p = i / points * Math.PI * 2;
+      var x = Math.sin(a * p + phase) * radius * (0.72 + bass*0.12);
+      var y = Math.sin(b * p) * radius * (0.72 + mid*0.12);
+      if(i===0) ctx.moveTo(x,y);
+      else ctx.lineTo(x,y);
+    }
+    ctx.stroke();
+
+    // reactor ticks
+    ctx.shadowBlur = 0;
+    for(var tick=0; tick<48; tick++){
+      var ang = tick/48 * Math.PI*2 + time*0.4;
+      var inner = radius * 1.05;
+      var outer = radius * (1.18 + high*0.08);
+      ctx.strokeStyle = smoothPaletteColor((tick/48 + time*.02)%1, 0.36);
+      ctx.lineWidth = Math.max(1, sizeScale * 0.55 * vizDpr);
+      ctx.beginPath();
+      ctx.moveTo(Math.cos(ang)*inner, Math.sin(ang)*inner);
+      ctx.lineTo(Math.cos(ang)*outer, Math.sin(ang)*outer);
+      ctx.stroke();
+    }
+
+    ctx.restore();
+  }
+
+
+  if(MODE==='star'){
+    // Star — restored radial starfield renderer.
+    ctx.globalCompositeOperation='source-over';
+    ctx.fillStyle='rgba(0,0,0,0.26)';
+    ctx.fillRect(0,0,w,h);
+
+    var minDim = Math.min(w,h);
+    var sizeScale = (typeof getVisualSizeScale === 'function') ? getVisualSizeScale() : 1;
+    var shapeAmt = (typeof getVisualizerShape === 'function') ? getVisualizerShape() : 0.5;
+    var speedAmt = (typeof getGlobalSpeedScale === 'function') ? getGlobalSpeedScale() : 1;
+    var time = t * (0.08 + speedAmt * 0.55);
+    var audioLevel = bass * 0.55 + mid * 0.28 + high * 0.17;
+
+    ctx.save();
+    ctx.translate(cx, cy);
+    ctx.globalCompositeOperation='screen';
+
+    var rays = 120 + Math.floor(shapeAmt * 100);
+    var innerR = minDim * (0.04 + audioLevel * 0.025);
+    var outerR = minDim * (0.28 + sizeScale * 0.12 + audioLevel * 0.08);
+
+    for(var i=0;i<rays;i++){
+      var p = i / rays;
+      var ang = p * Math.PI * 2 + time * (0.12 + shapeAmt * 0.18);
+      var jitter = Math.sin(i*12.989 + time*2.0) * 0.5 + 0.5;
+      var len = outerR * (0.45 + jitter * 0.55) * (0.75 + audioLevel * 0.6);
+      var r0 = innerR + jitter * minDim * 0.015;
+      var r1 = len;
+
+      ctx.strokeStyle = smoothPaletteColor((p + time*0.035) % 1, 0.16 + jitter*0.24 + audioLevel*0.18);
+      ctx.lineWidth = Math.max(1, (0.45 + sizeScale * 0.22 + high*0.4) * vizDpr);
+      ctx.beginPath();
+      ctx.moveTo(Math.cos(ang)*r0, Math.sin(ang)*r0);
+      ctx.lineTo(Math.cos(ang)*r1, Math.sin(ang)*r1);
+      ctx.stroke();
+    }
+
+    var core = ctx.createRadialGradient(0,0,0,0,0,minDim*(0.08+sizeScale*0.035));
+    core.addColorStop(0, smoothPaletteColor((0.12+time*.04)%1, 0.9));
+    core.addColorStop(0.45, smoothPaletteColor((0.60+time*.03)%1, 0.28));
+    core.addColorStop(1, 'rgba(0,0,0,0)');
+    ctx.fillStyle = core;
+    ctx.beginPath();
+    ctx.arc(0,0,minDim*(0.12+sizeScale*0.04),0,Math.PI*2);
+    ctx.fill();
+
+    ctx.restore();
   }
 
 if(MODE==='pleasures'){
@@ -3605,7 +3729,16 @@ function animate(){
 
     gl.useProgram(metalProg);
     bindSphereGeom(mAPos, mANorm);
-    gl.uniformMatrix4fv(mU.uMVP,false,mvp);
+
+    // Restore visible metal sphere scale. Size control subtly changes sphere size.
+    var metalSizeScale = 0.88 + ((typeof getVisualSizeScale === 'function') ? getVisualSizeScale() : 1.0) * 0.12;
+    var metalMVP = m4mul(mvp, new Float32Array([
+      metalSizeScale,0,0,0,
+      0,metalSizeScale,0,0,
+      0,0,metalSizeScale,0,
+      0,0,0,1
+    ]));
+    gl.uniformMatrix4fv(mU.uMVP,false,metalMVP);
     gl.uniform1f(mU.uTime,t);
     gl.uniform1f(mU.uBass,mBassSm); gl.uniform1f(mU.uMid,mMidSm); gl.uniform1f(mU.uHigh,mHighSm);
     gl.uniform1f(mU.uIdle,idle);
@@ -3644,7 +3777,7 @@ function animate(){
     if(bloom>.05){
       gl.enable(gl.BLEND);gl.blendFunc(gl.SRC_ALPHA,gl.ONE);
       var sc2=1+bloom*.03+mBassSm*.025;
-      var gm2=m4mul(mvp,new Float32Array([sc2,0,0,0,0,sc2,0,0,0,0,sc2,0,0,0,0,1]));
+      var gm2=m4mul(metalMVP,new Float32Array([sc2,0,0,0,0,sc2,0,0,0,0,sc2,0,0,0,0,1]));
       gl.uniformMatrix4fv(mU.uMVP,false,gm2);
       gl.uniform1f(mU.uNoiseStrength, strength*1.4);
       gl.drawElements(gl.TRIANGLES,geo.tri.length,gl.UNSIGNED_SHORT,0);

@@ -432,28 +432,28 @@ body::after { content: ''; position: fixed; inset: 0; pointer-events: none; z-in
 
   <!-- Row 1: MODE -->
   <div class="row">
-    <span class="row-lbl">MODE</span>
-    <button class="t"    id="btn-tiedye" onclick="setMode('tiedye')">◈ TIE DYE</button>
+    <span class="row-lbl">MODE</span><span class="row-lbl" style="opacity:.55">Keys: 1–9 / 0</span>
+    <button title="1" class="t"    id="btn-tiedye" onclick="setMode('tiedye')">◈ TIE DYE</button>
     <div class="vd"></div>
-    <button class="t" id="btn-pleasures" onclick="setMode('pleasures')">≋ JOY</button>
-<button class="t on" id="btn-ripple" onclick="setMode('ripple')">⌁ FLUID</button>
+    <button title="2" class="t" id="btn-pleasures" onclick="setMode('pleasures')">≋ JOY</button>
+<button title="3" class="t on" id="btn-ripple" onclick="setMode('ripple')">⌁ FLUID</button>
     <div class="vd"></div>
-    <button class="t"    id="btn-liquidmetal" onclick="setMode('liquidmetal')">◒ LIQUID METAL</button>
+    <button title="4" class="t"    id="btn-liquidmetal" onclick="setMode('liquidmetal')">◒ LIQUID METAL</button>
     <div class="vd"></div>
-    <button class="t"    id="btn-lightning" onclick="setMode('lightning')">ϟ LIGHTNING</button>
-    <div class="vd"></div>
-
-    <button class="t"    id="btn-ascii" onclick="setMode('ascii')">▦ ASCII</button>
+    <button title="5" class="t"    id="btn-lightning" onclick="setMode('lightning')">ϟ LIGHTNING</button>
     <div class="vd"></div>
 
+    <button title="6" class="t"    id="btn-ascii" onclick="setMode('ascii')">▦ ASCII</button>
+    <div class="vd"></div>
 
-    <button class="t"    id="btn-orb"    onclick="setMode('orb')">⬡ ORB BLOB</button>
+
+    <button title="7" class="t"    id="btn-orb"    onclick="setMode('orb')">⬡ ORB BLOB</button>
     <div class="vd"></div>
-    <button class="t"    id="btn-metal"  onclick="setMode('metal')">⬢ METAL SPHERE</button>
+    <button title="8" class="t"    id="btn-metal"  onclick="setMode('metal')">⬢ METAL SPHERE</button>
     <div class="vd"></div>
-    <button class="t"    id="btn-bio"    onclick="setMode('bio')">⋯ BIOLUMINESCENCE</button>
+    <button title="9" class="t"    id="btn-bio"    onclick="setMode('bio')">⋯ BIOLUMINESCENCE</button>
     <div class="vd"></div>
-    <button class="t"    id="btn-osc" onclick="setMode('osc')">⌇ OSC</button>
+    <button title="0" class="t"    id="btn-osc" onclick="setMode('osc')">⌇ OSC</button>
     <div class="vd"></div>
     <button class="t"    id="btn-fft" onclick="setMode('fft')">⌉ FFT</button>
 
@@ -1447,6 +1447,24 @@ function getBarPixelWidth(){
   return 2;
 }
 
+
+function getFullWidthBarLayout(w){
+  var barPx = getBarPixelWidth();
+  var gapPx = Math.max(0, Math.round(barPx * 0.45));
+  var pitch = Math.max(1, barPx + gapPx);
+  var count = Math.max(8, Math.floor(w / pitch));
+  var used = count * barPx + (count - 1) * gapPx;
+  var startX = (w - used) * 0.5;
+  return {
+    barPx: barPx,
+    gapPx: gapPx,
+    pitch: pitch,
+    count: count,
+    used: used,
+    startX: startX
+  };
+}
+
 function smoothPaletteColor(t, alpha){
   if(alpha === undefined) alpha = 1;
   t = ((t % 1) + 1) % 1;
@@ -1544,9 +1562,11 @@ function drawExtraVisualizer(t, spd, bloom){
     ctx.shadowBlur=0;
   }
   else if(MODE==='fft'){
-    var barPx = getBarPixelWidth();
-    var bars = Math.max(8, Math.floor((w * 0.82) / Math.max(1, barPx * 2.2)));
-    var gap = Math.max(1, Math.round(barPx * 1.2));
+    var barLayout = getFullWidthBarLayout(w);
+    var barPx = barLayout.barPx;
+    var gap = barLayout.gapPx;
+    var bars = barLayout.count;
+    var startX = barLayout.startX;
     // Full viewport width bars — mirrored spectrum so both sides are active
     var bins = Math.round((IS_MOBILE ? 60 : 120) + spd * (IS_MOBILE ? 60 : 80));
     var halfBins = Math.floor(bins/2);
@@ -1615,8 +1635,12 @@ function drawExtraVisualizer(t, spd, bloom){
     }
   }
   else if(MODE==='retrowave'){
+    var barLayout = getFullWidthBarLayout(w);
+    var barPx = barLayout.barPx;
+    var gap = barLayout.gapPx;
+    var bars = barLayout.count;
+    var startX = barLayout.startX;
     var barPx = getBarPixelWidth();
-    var bars = Math.max(8, Math.floor((w * 0.82) / Math.max(1, barPx * 2.2)));
     var gap = Math.max(1, Math.round(barPx * 1.2));
     var horizon = h*.58;
     // SPEED: grid scroll/density. BLOOM: grid glow + bar glow.
@@ -1639,7 +1663,6 @@ function drawExtraVisualizer(t, spd, bloom){
     ctx.shadowBlur = 0;
 
     // Bars: mirror spectrum left-right so full width has equal energy
-    var bars = Math.max(8, Math.floor((w * 0.82) / Math.max(1, barPx * 2.2)));
     var halfBars = Math.floor(bars/2);
     for(var b=0;b<bars;b++){
       // Mirror: left half = low freq ascending, right half = low freq descending
@@ -4451,6 +4474,7 @@ var tieDyeSim = (function(){
   setTex=function(n){_origSetTexTD(n);if(typeof tieDyeSim!=='undefined')tieDyeSim.setColor(n);};
 })();
 
+window.modeNumberShortcuts = {"1":"tiedye","2":"pleasures","3":"ripple","4":"liquidmetal","5":"lightning","6":"ascii","7":"orb","8":"metal","9":"bio","0":"osc"};
 // ═══════════════════════════════════════════════════════════════════
 // SAFE MODE CONTROLS — click-safe transitions, Auto VJ click, arrows
 // ═══════════════════════════════════════════════════════════════════
@@ -4535,6 +4559,16 @@ var tieDyeSim = (function(){
   document.addEventListener('keydown', function(e){
     var tag = (e.target && e.target.tagName) ? e.target.tagName.toLowerCase() : '';
     if(tag === 'input' || tag === 'textarea' || tag === 'select') return;
+
+
+    if (window.modeNumberShortcuts && window.modeNumberShortcuts[e.key]) {
+      e.preventDefault();
+      var numericMode = window.modeNumberShortcuts[e.key];
+      if (typeof window.setMode === 'function') {
+        window.setMode(numericMode);
+      }
+      return;
+    }
 
     if (e.key === 'ArrowRight') {
       e.preventDefault();

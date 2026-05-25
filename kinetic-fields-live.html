@@ -406,7 +406,7 @@ body::after { content: ''; position: fixed; inset: 0; pointer-events: none; z-in
 <canvas id="glc"></canvas>
 <canvas id="viz-canvas" style="position:fixed;inset:0;width:100%;height:100%;display:none;pointer-events:none;z-index:8;background:transparent;contain:strict;touch-action:none"></canvas>
 <canvas id="liquidmetal-canvas" style="position:fixed;inset:0;width:100vw;height:100vh;min-width:100vw;min-height:100vh;display:none;pointer-events:none;z-index:8;background:#000;contain:none;touch-action:none"></canvas>
-<canvas id="fluid-canvas" style="position:fixed;inset:0;width:100vw;height:100vh;min-width:100vw;min-height:100vh;display:none;pointer-events:none;z-index:8;background:#000;contain:none;touch-action:none"></canvas>
+<canvas id="fluid-canvas" style="position:fixed;inset:0;width:100%;height:100%;display:none;pointer-events:none;z-index:2;contain:strict;touch-action:none"></canvas>
 <canvas id="bio-canvas"   style="position:fixed;inset:0;width:100%;height:100%;display:none;z-index:8;contain:strict;touch-action:none"></canvas>
 <canvas id="tiedye-canvas" style="position:fixed;inset:0;width:100%;height:100%;display:none;z-index:8;contain:strict;touch-action:none"></canvas>
 <canvas id="pulse-canvas" style="position:fixed;inset:0;width:100%;height:100%;display:none;z-index:8;contain:strict;touch-action:none"></canvas>
@@ -855,7 +855,6 @@ function setMode(m) {
   } catch(e) { console.warn('tieDyeSim show/hide error:', e); }
 
   if (m === 'ripple') {
-    if (fluidCanvas) fluidCanvas.style.display = 'block';
     fluid.show();
   } else {
     fluid.hide();
@@ -1239,25 +1238,7 @@ var fluid = (function(){
     fgl.uniform1f(fgl.getUniformLocation(particleProgram,'u_pointScale'),1.15*fDpr*(0.45+quietGate*0.35+beatBurst*2.8+fbeat*1.6+fbass*0.5)*fSizeMult);
     fgl.drawArrays(fgl.POINTS,0,particleCount);
   }
-  
-  function resizeFluidCanvas(){
-    if(!fCanvas || !fgl) return;
-    fDpr = Math.min(2, window.devicePixelRatio || 1);
-    fWidth = Math.max(1, window.innerWidth);
-    fHeight = Math.max(1, window.innerHeight);
-    var pw = Math.floor(fWidth * fDpr);
-    var ph = Math.floor(fHeight * fDpr);
-    if(fCanvas.width !== pw || fCanvas.height !== ph){
-      fCanvas.width = pw;
-      fCanvas.height = ph;
-      fCanvas.style.width = '100vw';
-      fCanvas.style.height = '100vh';
-      frameA = makeFramebuffer(pw, ph);
-      frameB = makeFramebuffer(pw, ph);
-    }
-  }
-
-function renderOrb(){
+  function renderOrb(){
     fgl.bindFramebuffer(fgl.FRAMEBUFFER,frameB.framebuffer);fgl.viewport(0,0,fWidth,fHeight);
     fgl.useProgram(orbProgram);bindQuad(orbProgram);
     var rgb=palette(0.35,ftime);
@@ -1282,7 +1263,7 @@ function renderOrb(){
     fDpr=Math.min(window.devicePixelRatio||1,(IS_MOBILE?1.15:1.5));
     fWidth=Math.max(1,Math.floor(window.innerWidth*fDpr));
     fHeight=Math.max(1,Math.floor(window.innerHeight*fDpr));
-    fCanvas.width=Math.floor(fWidth*fDpr);fCanvas.height=Math.floor(fHeight*fDpr);
+    fCanvas.width=fWidth;fCanvas.height=fHeight;
     fgl.viewport(0,0,fWidth,fHeight);
     frameA=makeFramebuffer(fWidth,fHeight);frameB=makeFramebuffer(fWidth,fHeight);
     clearFrames();
@@ -1357,7 +1338,7 @@ function renderOrb(){
       fDpr=Math.min(window.devicePixelRatio||1,(IS_MOBILE?1.15:1.5));
       fWidth=Math.max(1,Math.floor(window.innerWidth*fDpr));
       fHeight=Math.max(1,Math.floor(window.innerHeight*fDpr));
-      fCanvas.width=Math.floor(fWidth*fDpr);fCanvas.height=Math.floor(fHeight*fDpr);
+      fCanvas.width=fWidth;fCanvas.height=fHeight;
 
       var opts={alpha:false,antialias:false,depth:false,stencil:false,premultipliedAlpha:false};
       fgl=fCanvas.getContext('webgl',opts)||fCanvas.getContext('experimental-webgl',opts);
@@ -4263,7 +4244,6 @@ var bioSim = (function(){
     setPixelSize:function(n){pixelSize=Math.max(1,Math.min(4,n));},
     tick:function(t,bass,mid,high,spd,bloom){
       if(!booted||!active)return;
-      resizeFluidCanvas();
       var dt=Math.min(0.05,t-lastT); lastT=t;
       if(dt<=0)dt=0.016;
       var W=Math.floor(window.innerWidth),H=Math.floor(window.innerHeight);

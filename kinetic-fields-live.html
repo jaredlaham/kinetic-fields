@@ -1562,166 +1562,155 @@ function drawExtraVisualizer(t, spd, bloom){
     ctx.shadowBlur=0;
   }
   else if(MODE==='fft'){
-    var barLayout = getFullWidthBarLayout(w);
-    var barPx = barLayout.barPx;
-    var gap = barLayout.gapPx;
-    var bars = barLayout.count;
-    var startX = barLayout.startX;
-    // Full viewport width bars — mirrored spectrum so both sides are active
-    var bins = Math.round((IS_MOBILE ? 60 : 120) + spd * (IS_MOBILE ? 60 : 80));
-    var halfBins = Math.floor(bins/2);
-    var barW = barPx * vizDpr;
-    for(var i=0;i<bins;i++){
-      // Mirror: low frequencies in center, high frequencies at edges
-      var freqBin = i < halfBins ? (halfBins - 1 - i) : (i - halfBins);
-      var v = Math.pow(audioByte(Math.floor(freqBin/halfBins*200)),1.1);
-      // Dramatic swing: cube the value so quiet=very short, loud=very tall
-      var bh = Math.pow(v, micActive ? 0.6 : 0.8) * h * (0.28 + bass*0.55);
-      var hue = vizHue + (i/bins)*300;
-      var grad = ctx.createLinearGradient(0,cy-bh,0,cy+bh);
-      grad.addColorStop(0, smoothPaletteColor((hue)/360,  0.95));
-      grad.addColorStop(0.5, smoothPaletteColor((hue+60)/360,  0.85));
-      grad.addColorStop(1, smoothPaletteColor((hue+120)/360,  0.6));
+    // Full-width FFT bars.
+    // Size buttons control bar thickness: Small 2px, Medium 4px, Large 10px, 3XL 15px.
+    ctx.globalCompositeOperation='source-over';
+    ctx.fillStyle='rgba(0,0,0,0.26)';
+    ctx.fillRect(0,0,w,h);
+
+    var barPx = getBarPixelWidth ? getBarPixelWidth() : 2;
+    var gapPx = Math.max(0, Math.round(barPx * 0.45));
+    var pitch = Math.max(1, barPx + gapPx);
+    var bars = Math.max(8, Math.ceil(w / pitch));
+    var actualPitch = w / bars;
+    var drawW = Math.max(1, Math.min(barPx, actualPitch));
+
+    var baseY = h * 0.82;
+    var maxH = h * 0.62;
+    var time = t * (0.05 + speedAmt * 0.7);
+
+    ctx.save();
+    ctx.lineCap = 'butt';
+
+    for(var i=0; i<bars; i++){
+      var p = i / Math.max(1, bars - 1);
+      var bin = Math.floor(Math.pow(p, 1.35) * ((dataArray && dataArray.length) ? dataArray.length - 1 : 255));
+      var amp = 0;
+
+      if(micActive && dataArray && dataArray.length){
+        amp = dataArray[Math.max(0, Math.min(dataArray.length-1, bin))] / 255;
+      } else {
+        amp = 0.18 + 0.18 * Math.sin(time + i * 0.18) + 0.12 * Math.sin(time * 0.7 + i * 0.051);
+        amp = Math.max(0, Math.min(1, amp));
+      }
+
+      var eased = Math.pow(amp, 0.78);
+      var bh = Math.max(2, eased * maxH * (0.38 + Math.sin(p * Math.PI) * 0.72));
+
+      var x = i * actualPitch;
+      var y = baseY - bh;
+
+      var alpha = 0.42 + eased * 0.54;
+      ctx.fillStyle = smoothPaletteColor((p + time * 0.035 + eased * 0.12) % 1, alpha);
+
+      ctx.fillRect(x, y, drawW, bh);
+
+      // mirrored ghost for fuller stage look
+      ctx.fillStyle = smoothPaletteColor((p + 0.18 + time * 0.025) % 1, alpha * 0.16);
+      ctx.fillRect(x, baseY, drawW, bh * 0.28);
+    }
+
+    // subtle horizontal scan line
+    ctx.globalCompositeOperation='screen';
+    ctx.fillStyle = 'rgba(255,255,255,0.035)';
+    ctx.fillRect(0, baseY, w, Math.max(1, vizDpr));
+
+    ctx.restore();
+  }
+
+
+  if(MODE==='retrowave'){
+    // Full-width Retro bars/grid.
+    // Size buttons control vertical bar thickness/count across the entire canvas.
+    ctx.globalCompositeOperation='source-over';
+    ctx.fillStyle='rgba(0,0,0,0.24)';
+    ctx.fillRect(0,0,w,h);
+
+    var barPx = getBarPixelWidth ? getBarPixelWidth() : 2;
+    var gapPx = Math.max(0, Math.round(barPx * 0.45));
+    var pitch = Math.max(1, barPx + gapPx);
+    var bars = Math.max(8, Math.ceil(w / pitch));
+    var actualPitch = w / bars;
+    var drawW = Math.max(1, Math.min(barPx, actualPitch));
+
+    var horizon = h * 0.54;
+    var floorY = h * 0.92;
+    var time = t * (0.035 + speedAmt * 0.55);
+    var audioLevel = bass * 0.55 + mid * 0.28 + high * 0.17;
+
+    ctx.save();
+
+    var bg = ctx.createLinearGradient(0,0,0,h);
+    bg.addColorStop(0, smoothPaletteColor((0.72 + time*0.02)%1, 0.22));
+    bg.addColorStop(0.52, 'rgba(0,0,0,0.0)');
+    bg.addColorStop(1, smoothPaletteColor((0.08 + time*0.02)%1, 0.10));
+    ctx.fillStyle = bg;
+    ctx.fillRect(0,0,w,h);
+
+    var sunR = Math.min(w,h) * (0.08 + globalSize * 0.035);
+    var sun = ctx.createRadialGradient(w/2,horizon-sunR*.22,0,w/2,horizon-sunR*.22,sunR*1.55);
+    sun.addColorStop(0, smoothPaletteColor((0.10+time*.02)%1,0.32));
+    sun.addColorStop(0.55, smoothPaletteColor((0.86+time*.02)%1,0.16));
+    sun.addColorStop(1,'rgba(0,0,0,0)');
+    ctx.fillStyle=sun;
+    ctx.beginPath();
+    ctx.arc(w/2,horizon-sunR*.22,sunR*1.55,0,Math.PI*2);
+    ctx.fill();
+
+    ctx.globalCompositeOperation='screen';
+
+    for(var gy=0; gy<18; gy++){
+      var q = gy / 17;
+      var yy = horizon + Math.pow(q, 2.15) * (floorY - horizon);
+      var a = 0.08 + q * 0.28;
+      ctx.strokeStyle = smoothPaletteColor((0.78 + q*.18 + time*.015)%1, a);
+      ctx.lineWidth = Math.max(1, barPx * 0.22) * vizDpr;
+      ctx.beginPath();
+      ctx.moveTo(0, yy);
+      ctx.lineTo(w, yy);
+      ctx.stroke();
+    }
+
+    for(var i=0; i<bars; i++){
+      var p = i / Math.max(1, bars - 1);
+      var x = i * actualPitch;
+      var centerPull = Math.abs(p - 0.5) * 2.0;
+
+      var bin = Math.floor(Math.pow(p, 1.2) * ((dataArray && dataArray.length) ? dataArray.length - 1 : 255));
+      var amp = 0;
+      if(micActive && dataArray && dataArray.length){
+        amp = dataArray[Math.max(0, Math.min(dataArray.length-1, bin))] / 255;
+      } else {
+        amp = 0.16 + 0.18 * Math.sin(time*1.8 + i*.15) + 0.08 * Math.cos(time + i*.037);
+        amp = Math.max(0, Math.min(1, amp));
+      }
+
+      var topY = horizon + Math.pow(centerPull, 1.8) * h * 0.18 - amp * h * 0.18;
+      var bottomY = floorY;
+      var alpha = 0.24 + amp * 0.48 + (1-centerPull) * 0.08;
+
+      var grad = ctx.createLinearGradient(x, topY, x, bottomY);
+      grad.addColorStop(0, smoothPaletteColor((p + time*.03)%1, alpha));
+      grad.addColorStop(0.65, smoothPaletteColor((p + .16 + time*.025)%1, alpha*.48));
+      grad.addColorStop(1, 'rgba(0,0,0,0)');
       ctx.fillStyle = grad;
-      ctx.shadowBlur = 0;
-      ctx.fillRect(i*barW, cy-bh, Math.ceil(barW)+1, bh*2);
+      ctx.fillRect(x, topY, drawW, bottomY - topY);
     }
-  }
-  else if(MODE==='dots'){
-    // SPEED: rotation speed. BLOOM: dot glow size.
-    var dotCount = IS_MOBILE ? 170 : 320;
-    for(var i=0;i<dotCount;i++){
-      var v = audioByte(Math.floor(i/dotCount*255));
-      var a = i*2.399963 + t*0.25*spd;
-      var r = Math.sqrt(i/dotCount)*Math.min(w,h)*(0.42 + bass*0.10);
-      var wobble = Math.sin(i*.13 + t*1.9*spd)*Math.min(w,h)*(0.015 + mid*.025);
-      var x = cx + Math.cos(a)*(r+wobble);
-      var y = cy + Math.sin(a)*(r+wobble);
-      var size = (1.3 + v*7 + bass*4)*vizDpr;
-      ctx.beginPath();
-      ctx.fillStyle = smoothPaletteColor((vizHue+i*.65+v*130)/360, 0.36+v*.58);
-      ctx.shadowBlur = (7 + bloom*30 + v*16)*vizDpr;
-      ctx.shadowColor = smoothPaletteColor((vizHue+i*.65)/360, 0.5+bloom*0.5);
-      ctx.arc(x,y,size,0,Math.PI*2);
-      ctx.fill();
-    }
+
+    ctx.strokeStyle = smoothPaletteColor((0.90 + time*.02)%1, 0.34 + audioLevel*.12);
+    ctx.lineWidth = Math.max(1, barPx * 0.35) * vizDpr;
+    ctx.beginPath();
+    ctx.moveTo(w*0.5, horizon);
+    ctx.lineTo(w*0.06, floorY);
+    ctx.moveTo(w*0.5, horizon);
+    ctx.lineTo(w*0.94, floorY);
+    ctx.stroke();
+
+    ctx.restore();
   }
 
-  else if(MODE==='lissajous'){
-    ctx.globalCompositeOperation='lighter';
-    // ARC REACTOR: CHAOS slider controls path count + audio reaction strength
-    var layers = Math.max(1, Math.round(CHAOS));
-    var audioReact = CHAOS / 8;  // 0..1 — how much audio distorts paths
-    for(var layer=0; layer<layers; layer++){
-      ctx.beginPath();
-      var ax = 2 + layer;
-      var ay = 3 + (layer%3);
-      var phase = t * (0.55 + layer*.11) * spd + bass*3.5*audioReact;
-      var scale = Math.min(w,h)*(0.18 + layer*.045 + bass*.12*audioReact);
-      var pts = IS_MOBILE ? 480 : 900;
-      for(var i=0;i<pts;i++){
-        var p = i/(pts-1)*Math.PI*2;
-        var amp = 1 + Math.sin(p*10+t*spd+layer)*high*.20*audioReact*2;
-        var amp2 = 1 + Math.cos(p*7+t*spd*0.7)*mid*.15*audioReact*2;
-        var x = cx + Math.sin(ax*p + phase)*scale*amp;
-        var y = cy + Math.sin(ay*p + phase*.72 + layer)*scale*amp2;
-        if(i===0) ctx.moveTo(x,y); else ctx.lineTo(x,y);
-      }
-      ctx.strokeStyle = smoothPaletteColor((vizHue+layer*52)/360, 0.78);
-      ctx.lineWidth = (1.1+bass*3.5)*vizDpr;
-      ctx.shadowBlur = (8+bass*18)*vizDpr;
-      ctx.shadowColor = smoothPaletteColor((vizHue+layer*52)/360, 0.9);
-      ctx.stroke();
-    }
-  }
-  else if(MODE==='retrowave'){
-    var barLayout = getFullWidthBarLayout(w);
-    var barPx = barLayout.barPx;
-    var gap = barLayout.gapPx;
-    var bars = barLayout.count;
-    var startX = barLayout.startX;
-    var barPx = getBarPixelWidth();
-    var gap = Math.max(1, Math.round(barPx * 1.2));
-    var horizon = h*.58;
-    // SPEED: grid scroll/density. BLOOM: grid glow + bar glow.
-    ctx.strokeStyle = smoothPaletteColor((vizHue+210)/360, 0.38);
-    ctx.lineWidth = 1.2*vizDpr;
-    ctx.shadowBlur = 0;
-    ctx.shadowColor = 'transparent';
-    for(var yline=0;yline<19;yline++){
-      var y = horizon + Math.pow(yline/18,2.15)*(h-horizon);
-      ctx.beginPath(); ctx.moveTo(0,y); ctx.lineTo(w,y); ctx.stroke();
-    }
-    // vertical lines: SPEED controls density
-    var vLines = Math.round(20 + spd * 20);
-    for(var i=-vLines;i<=vLines;i++){
-      ctx.beginPath();
-      ctx.moveTo(cx+i*w*(0.04*(20/vLines)),h);
-      ctx.lineTo(cx+i*w*(0.006*(20/vLines)),horizon);
-      ctx.stroke();
-    }
-    ctx.shadowBlur = 0;
 
-    // Bars: mirror spectrum left-right so full width has equal energy
-    var halfBars = Math.floor(bars/2);
-    for(var b=0;b<bars;b++){
-      // Mirror: left half = low freq ascending, right half = low freq descending
-      var freqIdx = b < halfBars ? b : (bars - 1 - b);
-      var v = audioByte(Math.floor(freqIdx/halfBars*127));
-      var x = b/bars*w;
-      var bh = v*horizon*(0.85 + bass*0.55);
-      ctx.shadowBlur = (3+bass*8)*vizDpr;
-      ctx.shadowColor = smoothPaletteColor((vizHue+(b/bars)*280)/360, 0.9);
-      ctx.fillStyle = smoothPaletteColor((vizHue+(b/bars)*280)/360,  0.88);
-      ctx.fillRect(x, horizon-bh, Math.ceil(w/bars)+1, bh);
-    }
-    ctx.shadowBlur=0;
-  }
 
-  else if(MODE==='star'){
-    ctx.translate(cx,cy);
-    // Track beat peak for shockwave
-    var beatPeak = (bass > 0.5) ? bass : 0;
-    for(var i=0;i<vizStars.length;i++){
-      var s=vizStars[i];
-      // SPEED: warp speed. Beat: stars pushed outward on spike
-      var warpSpeed = (0.007 + bass*.05 + freq*.012) * spd;
-      // Shockwave: on strong beat, briefly reverse warp (stars pop outward)
-      if(beatPeak > 0.6) warpSpeed -= beatPeak * 0.04;
-      s.z -= warpSpeed;
-      if(s.z<=0.02){
-        s.x=Math.random()*2-1;
-        s.y=Math.random()*2-1;
-        s.z=1;
-        s.h=vizHue+Math.random()*180;
-      }
-      var k = Math.min(w,h)/(s.z*1.65);
-      var kPrev = Math.min(w,h)/((s.z+0.06)*1.65);
-      var x=s.x*k, y=s.y*k;
-      var px=s.x*kPrev, py=s.y*kPrev;
-      var alpha = Math.max(0,1-s.z);
-      // Beat: color flash to bright white + thicker trails
-      var beatBright = Math.max(0, beatPeak - 0.5) * 2;
-      var trailLight = 65 + beatBright * 35;
-      var trailWidth = s.r + bass*3.2 + beatBright*3;
-      ctx.strokeStyle=smoothPaletteColor((s.h+high*50)/360,  alpha*.90);
-      ctx.lineWidth=trailWidth*vizDpr;
-      ctx.shadowBlur=(6 + beatBright*30)*vizDpr;
-      ctx.shadowColor=smoothPaletteColor((s.h)/360,  beatBright*0.9);
-      ctx.beginPath(); ctx.moveTo(px,py); ctx.lineTo(x,y); ctx.stroke();
-    }
-    ctx.setTransform(1,0,0,1,0,0);
-    // Central orb pulses brightly on beat
-    if(bass > 0.1){
-      ctx.beginPath();
-      ctx.arc(cx,cy,Math.min(w,h)*(0.045+bass*.09+beatPeak*.06),0,Math.PI*2);
-      ctx.fillStyle=smoothPaletteColor((vizHue+40)/360, 0.30+bass*.50);
-      ctx.shadowBlur=(35+beatPeak*60)*vizDpr;
-      ctx.shadowColor=smoothPaletteColor((vizHue+40)/360, 0.95);
-      ctx.fill();
-    }
-  }
-  else 
   if(MODE==='lightning'){
     // Lightning — more unpredictable placement, tilt, branching, and strike origin.
     ctx.globalCompositeOperation='source-over';

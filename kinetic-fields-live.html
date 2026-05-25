@@ -435,7 +435,7 @@ body::after { content: ''; position: fixed; inset: 0; pointer-events: none; z-in
     <span class="row-lbl">MODE</span>
     <button class="t"    id="btn-tiedye" onclick="setMode('tiedye')">◈ TIE DYE</button>
     <div class="vd"></div>
-    <button class="t" id="btn-pleasures" onclick="setMode('pleasures')">≋ PLEASURES</button>
+    <button class="t" id="btn-pleasures" onclick="setMode('pleasures')">≋ JOY</button>
 <button class="t on" id="btn-ripple" onclick="setMode('ripple')">⌁ FLUID</button>
     <div class="vd"></div>
     <button class="t"    id="btn-liquidmetal" onclick="setMode('liquidmetal')">◒ LIQUID METAL</button>
@@ -514,13 +514,13 @@ body::after { content: ''; position: fixed; inset: 0; pointer-events: none; z-in
     <div class="sg"><span>SPEED</span><input type="range" id="speedSl" min="1" max="10" value="3" step="1"></div>
     <div class="vd"></div>
     <span class="row-lbl">SIZE</span>
-    <button class="t" id="sizeSmallBtn" onclick="setVisualSize('small')">SMALL</button>
+    <button class="t on" id="sizeSmallBtn" onclick="setVisualSize('small')">SMALL</button>
     <div class="vd"></div>
     <button class="t" id="sizeMediumBtn" onclick="setVisualSize('medium')">MEDIUM</button>
     <div class="vd"></div>
     <button class="t" id="sizeLargeBtn" onclick="setVisualSize('large')">LARGE</button>
     <div class="vd"></div>
-    <button class="t on" id="size3xBtn" onclick="setVisualSize('3x')">3XL</button>
+    <button class="t" id="size3xBtn" onclick="setVisualSize('3x')">3XL</button>
   </div>
 
   <!-- Bio pixel size row -->
@@ -738,8 +738,8 @@ var DETAIL  = 3;
 var BLOOM   = 0;
 var CHAOS   = 4;
 var SHAPE = 5; // Liquid Metal shape/warp amount
-var SIZE    = 16;  // visual scale; ASCII defaults large
-var VISUAL_SIZE_MODE = '3x';
+var SIZE    = 2;  // visual scale; ASCII defaults large
+var VISUAL_SIZE_MODE = 'small';
 var BIO_PIXEL_SIZE = 1;  // 1-4 particle size
 var SPEED  = 3;
 var DENSITY = 3;
@@ -1000,10 +1000,10 @@ function setWire(w) {
 function setVisualSize(mode) {
   VISUAL_SIZE_MODE = mode;
 
-  if (mode === 'small') SIZE = 4;
-  else if (mode === 'medium') SIZE = 7;
-  else if (mode === 'large') SIZE = 12;
-  else SIZE = 16;
+  if (mode === 'small') SIZE = 2;
+  else if (mode === 'medium') SIZE = 4;
+  else if (mode === 'large') SIZE = 10;
+  else SIZE = 15;
 
   var s  = document.getElementById('sizeSmallBtn');
   var m  = document.getElementById('sizeMediumBtn');
@@ -1437,6 +1437,33 @@ function getGlobalSpeedScale(){
   return Math.max(0.03, Math.min(2.4, 0.06 + (s / 10) * 2.34));
 }
 
+
+function getBarPixelWidth(){
+  var mode = (typeof VISUAL_SIZE_MODE !== 'undefined') ? VISUAL_SIZE_MODE : 'small';
+  if(mode === 'small') return 2;
+  if(mode === 'medium') return 4;
+  if(mode === 'large') return 10;
+  if(mode === '3x') return 15;
+  return 2;
+}
+
+function smoothPaletteColor(t, alpha){
+  if(alpha === undefined) alpha = 1;
+  t = ((t % 1) + 1) % 1;
+  var palette = (typeof currentPalette === 'function') ? currentPalette() : null;
+  if(!palette || !palette.length) return paletteColor(t, alpha);
+  var scaled = t * (palette.length - 1);
+  var i = Math.floor(scaled);
+  var f = scaled - i;
+  f = 0.5 - 0.5 * Math.cos(f * Math.PI);
+  var c1 = palette[i];
+  var c2 = palette[Math.min(palette.length - 1, i + 1)];
+  var r = Math.round(c1[0] + (c2[0] - c1[0]) * f);
+  var g = Math.round(c1[1] + (c2[1] - c1[1]) * f);
+  var b = Math.round(c1[2] + (c2[2] - c1[2]) * f);
+  return 'rgba(' + r + ',' + g + ',' + b + ',' + alpha + ')';
+}
+
 function drawExtraVisualizer(t, spd, bloom){
   if(!vizCtx2d) initViz2D();
   if(!vizCtx2d) return;
@@ -1517,10 +1544,13 @@ function drawExtraVisualizer(t, spd, bloom){
     ctx.shadowBlur=0;
   }
   else if(MODE==='fft'){
+    var barPx = getBarPixelWidth();
+    var bars = Math.max(8, Math.floor((w * 0.82) / Math.max(1, barPx * 2.2)));
+    var gap = Math.max(1, Math.round(barPx * 1.2));
     // Full viewport width bars — mirrored spectrum so both sides are active
     var bins = Math.round((IS_MOBILE ? 60 : 120) + spd * (IS_MOBILE ? 60 : 80));
     var halfBins = Math.floor(bins/2);
-    var barW = w / bins;
+    var barW = barPx * vizDpr;
     for(var i=0;i<bins;i++){
       // Mirror: low frequencies in center, high frequencies at edges
       var freqBin = i < halfBins ? (halfBins - 1 - i) : (i - halfBins);
@@ -1529,9 +1559,9 @@ function drawExtraVisualizer(t, spd, bloom){
       var bh = Math.pow(v, micActive ? 0.6 : 0.8) * h * (0.28 + bass*0.55);
       var hue = vizHue + (i/bins)*300;
       var grad = ctx.createLinearGradient(0,cy-bh,0,cy+bh);
-      grad.addColorStop(0, hsl(hue, 100, 65, 0.95));
-      grad.addColorStop(0.5, hsl(hue+60, 100, 55, 0.85));
-      grad.addColorStop(1, hsl(hue+120, 100, 45, 0.6));
+      grad.addColorStop(0, smoothPaletteColor((hue)/360,  0.95));
+      grad.addColorStop(0.5, smoothPaletteColor((hue+60)/360,  0.85));
+      grad.addColorStop(1, smoothPaletteColor((hue+120)/360,  0.6));
       ctx.fillStyle = grad;
       ctx.shadowBlur = 0;
       ctx.fillRect(i*barW, cy-bh, Math.ceil(barW)+1, bh*2);
@@ -1549,9 +1579,9 @@ function drawExtraVisualizer(t, spd, bloom){
       var y = cy + Math.sin(a)*(r+wobble);
       var size = (1.3 + v*7 + bass*4)*vizDpr;
       ctx.beginPath();
-      ctx.fillStyle = hsl(vizHue+i*.65+v*130,100,64,0.36+v*.58);
+      ctx.fillStyle = smoothPaletteColor((vizHue+i*.65+v*130)/360, 0.36+v*.58);
       ctx.shadowBlur = (7 + bloom*30 + v*16)*vizDpr;
-      ctx.shadowColor = hsl(vizHue+i*.65,100,58,0.5+bloom*0.5);
+      ctx.shadowColor = smoothPaletteColor((vizHue+i*.65)/360, 0.5+bloom*0.5);
       ctx.arc(x,y,size,0,Math.PI*2);
       ctx.fill();
     }
@@ -1577,17 +1607,20 @@ function drawExtraVisualizer(t, spd, bloom){
         var y = cy + Math.sin(ay*p + phase*.72 + layer)*scale*amp2;
         if(i===0) ctx.moveTo(x,y); else ctx.lineTo(x,y);
       }
-      ctx.strokeStyle = hsl(vizHue+layer*52,100,58,0.78);
+      ctx.strokeStyle = smoothPaletteColor((vizHue+layer*52)/360, 0.78);
       ctx.lineWidth = (1.1+bass*3.5)*vizDpr;
       ctx.shadowBlur = (8+bass*18)*vizDpr;
-      ctx.shadowColor = hsl(vizHue+layer*52,100,68,0.9);
+      ctx.shadowColor = smoothPaletteColor((vizHue+layer*52)/360, 0.9);
       ctx.stroke();
     }
   }
   else if(MODE==='retrowave'){
+    var barPx = getBarPixelWidth();
+    var bars = Math.max(8, Math.floor((w * 0.82) / Math.max(1, barPx * 2.2)));
+    var gap = Math.max(1, Math.round(barPx * 1.2));
     var horizon = h*.58;
     // SPEED: grid scroll/density. BLOOM: grid glow + bar glow.
-    ctx.strokeStyle = hsl(vizHue+210,100,58,0.38);
+    ctx.strokeStyle = smoothPaletteColor((vizHue+210)/360, 0.38);
     ctx.lineWidth = 1.2*vizDpr;
     ctx.shadowBlur = 0;
     ctx.shadowColor = 'transparent';
@@ -1606,7 +1639,7 @@ function drawExtraVisualizer(t, spd, bloom){
     ctx.shadowBlur = 0;
 
     // Bars: mirror spectrum left-right so full width has equal energy
-    var bars = Math.round((IS_MOBILE ? 40 : 72) + spd * (IS_MOBILE ? 48 : 80));
+    var bars = Math.max(8, Math.floor((w * 0.82) / Math.max(1, barPx * 2.2)));
     var halfBars = Math.floor(bars/2);
     for(var b=0;b<bars;b++){
       // Mirror: left half = low freq ascending, right half = low freq descending
@@ -1615,8 +1648,8 @@ function drawExtraVisualizer(t, spd, bloom){
       var x = b/bars*w;
       var bh = v*horizon*(0.85 + bass*0.55);
       ctx.shadowBlur = (3+bass*8)*vizDpr;
-      ctx.shadowColor = hsl(vizHue+(b/bars)*280,100,68,0.9);
-      ctx.fillStyle = hsl(vizHue+(b/bars)*280, 100, 58, 0.88);
+      ctx.shadowColor = smoothPaletteColor((vizHue+(b/bars)*280)/360, 0.9);
+      ctx.fillStyle = smoothPaletteColor((vizHue+(b/bars)*280)/360,  0.88);
       ctx.fillRect(x, horizon-bh, Math.ceil(w/bars)+1, bh);
     }
     ctx.shadowBlur=0;
@@ -1648,10 +1681,10 @@ function drawExtraVisualizer(t, spd, bloom){
       var beatBright = Math.max(0, beatPeak - 0.5) * 2;
       var trailLight = 65 + beatBright * 35;
       var trailWidth = s.r + bass*3.2 + beatBright*3;
-      ctx.strokeStyle=hsl(s.h+high*50, 100, 58+bass*22+beatBright*25, alpha*.90);
+      ctx.strokeStyle=smoothPaletteColor((s.h+high*50)/360,  alpha*.90);
       ctx.lineWidth=trailWidth*vizDpr;
       ctx.shadowBlur=(6 + beatBright*30)*vizDpr;
-      ctx.shadowColor=hsl(s.h, 100, 90, beatBright*0.9);
+      ctx.shadowColor=smoothPaletteColor((s.h)/360,  beatBright*0.9);
       ctx.beginPath(); ctx.moveTo(px,py); ctx.lineTo(x,y); ctx.stroke();
     }
     ctx.setTransform(1,0,0,1,0,0);
@@ -1659,9 +1692,9 @@ function drawExtraVisualizer(t, spd, bloom){
     if(bass > 0.1){
       ctx.beginPath();
       ctx.arc(cx,cy,Math.min(w,h)*(0.045+bass*.09+beatPeak*.06),0,Math.PI*2);
-      ctx.fillStyle=hsl(vizHue+40,100,70+beatPeak*25,0.30+bass*.50);
+      ctx.fillStyle=smoothPaletteColor((vizHue+40)/360, 0.30+bass*.50);
       ctx.shadowBlur=(35+beatPeak*60)*vizDpr;
-      ctx.shadowColor=hsl(vizHue+40,100,90,0.95);
+      ctx.shadowColor=smoothPaletteColor((vizHue+40)/360, 0.95);
       ctx.fill();
     }
   }
@@ -1826,7 +1859,7 @@ function drawExtraVisualizer(t, spd, bloom){
   }
 
 if(MODE==='pleasures'){
-    // Unknown Pleasures / Joy Division-inspired ridge visualizer.
+    // Joy Division-inspired ridge visualizer.
     // Inspired by Pouria's WebGL experiment, but implemented as a fast Canvas 2D mode.
     ctx.globalCompositeOperation='source-over';
     ctx.fillStyle='rgba(0,0,0,0.34)';
@@ -3724,7 +3757,7 @@ if(MODE==='ripple' && typeof fluid !== 'undefined'){
 }
 
 updateAutoVJStatus();
-setVisualSize('3x');
+setVisualSize('small');
 setMode('ripple');
 animate();
 } // end initGL

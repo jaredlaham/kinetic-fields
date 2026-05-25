@@ -433,7 +433,8 @@ body::after { content: ''; position: fixed; inset: 0; pointer-events: none; z-in
   <!-- Row 1: MODE -->
   <div class="row">
     <span class="row-lbl">MODE</span>
-    <button class="t on" id="btn-ripple" onclick="setMode('ripple')">⌁ FLUID</button>
+    <button class="t"    id="btn-tiedye" onclick="setMode('tiedye')">◈ TIE DYE</button>
+<button class="t on" id="btn-ripple" onclick="setMode('ripple')">⌁ FLUID</button>
     <div class="vd"></div>
     <button class="t"    id="btn-liquidmetal" onclick="setMode('liquidmetal')">◒ LIQUID METAL</button>
     <div class="vd"></div>
@@ -463,9 +464,9 @@ body::after { content: ''; position: fixed; inset: 0; pointer-events: none; z-in
     <div class="vd"></div>
     <button class="t"    id="btn-iris"  onclick="setMode('iris')">⌬ IRIS</button>
     <div class="vd"></div>
-    <button class="t"    id="btn-pulse" onclick="setMode('pulse')">◉ PULSE</button>
+    <button class="t"    id="btn-pulse" onclick="setMode('cube')">◉ CUBE</button>
     <div class="vd"></div>
-    <button class="t"    id="btn-tiedye" onclick="setMode('tiedye')">◈ TIE DYE</button>
+    
   </div>
 
   <!-- Row 2: TEXTURE — shared across orb + ripple -->
@@ -506,7 +507,7 @@ body::after { content: ''; position: fixed; inset: 0; pointer-events: none; z-in
       <div class="vd"></div>
       <div class="sg"><span>DENSITY</span><input type="range" id="fDensitySl" min="1" max="100" value="28" step="1"></div>
     </span>
-    <div class="sg" id="liquid-shape-ui"><span>SHAPE</span><input type="range" id="shapeSl" min="1" max="10" value="5" step="1"></div>
+    <div class="sg" id="liquid-shape-ui"><span>VISUALIZER SHAPE</span><input type="range" id="shapeSl" min="1" max="10" value="5" step="1"></div>
     <div class="vd" id="liquid-shape-div"></div>
     <div class="sg"><span>SPEED</span><input type="range" id="speedSl" min="1" max="10" value="3" step="1"></div>
     <div class="vd"></div>
@@ -517,7 +518,7 @@ body::after { content: ''; position: fixed; inset: 0; pointer-events: none; z-in
     <div class="vd"></div>
     <button class="t" id="sizeLargeBtn" onclick="setVisualSize('large')">LARGE</button>
     <div class="vd"></div>
-    <button class="t on" id="size3xBtn" onclick="setVisualSize('3x')">3X</button>
+    <button class="t on" id="size3xBtn" onclick="setVisualSize('3x')">3XL</button>
   </div>
 
   <!-- Bio pixel size row -->
@@ -745,7 +746,7 @@ var autoVJActive = false;
 var autoVJTimer = null;
 var autoVJIndex = 0;
 var autoVJIntervalMs = 12000;
-var autoVJModes = ['ripple','lightning','ascii','bio','orb','metal','osc','fft','lissajous','retrowave','star','iris','pulse','tiedye'];
+var autoVJModes = ['tiedye','ripple','lightning','ascii','bio','orb','metal','osc','fft','lissajous','retrowave','star','iris','cube'];
 // Metal sphere params
 var M_NOISE   = 1.16;
 var M_DISP    = 0.45;
@@ -767,7 +768,7 @@ var micGainNode = null;
 function setMode(m) {
   MODE = m;
 
-  var twoDModes = ['osc','fft','lissajous','retrowave','star','pulse','lightning','ascii'];
+  var twoDModes = ['osc','fft','lissajous','retrowave','star','cube','lightning','ascii'];
   var is2D = twoDModes.indexOf(m) !== -1;
 
   var modeButtonIds = {
@@ -784,7 +785,7 @@ function setMode(m) {
     retrowave: 'btn-retrowave',
     star: 'btn-star',
     iris: 'btn-iris',
-    pulse: 'btn-pulse',
+    cube: 'btn-pulse',
     tiedye: 'btn-tiedye'
   };
 
@@ -922,7 +923,7 @@ function setTex(n) {
   vizLightMod = p.light;
 
   // Metal sphere behavior preset.
-  var metalMap = [5, 1, 3, 0, 4, 4, 2];
+  var metalMap = [5, 1, 2, 3, 4, 4, 0];
   if (typeof M_TYPE !== 'undefined') {
     M_TYPE = metalMap[TEX];
     for (var j = 0; j < 6; j++) {
@@ -1410,6 +1411,24 @@ function audioByte(i){
 function hsl(h,s,l,a){
   return paletteHslFallback(h, s, l, a);
 }
+
+function getVisualSizeScale(){
+  var mode = (typeof VISUAL_SIZE_MODE !== 'undefined') ? VISUAL_SIZE_MODE : 'medium';
+  if(mode === 'small') return 0.75;
+  if(mode === 'medium') return 1.0;
+  if(mode === 'large') return 1.45;
+  if(mode === '3x') return 2.25;
+  return 1.0;
+}
+
+function getVisualizerShape(){
+  return Math.max(0, Math.min(1, ((typeof SHAPE !== 'undefined' ? SHAPE : 5) - 1) / 9));
+}
+
+function getGlobalSpeedScale(){
+  return Math.max(0.08, Math.min(1.8, (typeof SPEED !== 'undefined' ? SPEED : 5) / 5));
+}
+
 function drawExtraVisualizer(t, spd, bloom){
   if(!vizCtx2d) initViz2D();
   if(!vizCtx2d) return;
@@ -1421,6 +1440,10 @@ function drawExtraVisualizer(t, spd, bloom){
   var ctx = vizCtx2d;
   var w = vizW, h = vizH;
   var cx = w/2, cy = h/2;
+  var globalSize = getVisualSizeScale();
+  var shapeAmt = getVisualizerShape();
+  var speedAmt = getGlobalSpeedScale();
+  spd = spd * speedAmt;
 
   // Apply power curve for dramatic audio swing (quiet=near0, loud=near1 with steep knee)
   var _rawBass = micActive ? sBass : 0.18 + 0.08*Math.sin(t*1.4);
@@ -1646,7 +1669,7 @@ function drawExtraVisualizer(t, spd, bloom){
     var minDim = Math.min(w,h);
     var time = t * (0.82 + spd * 1.2 + high * 1.65);
     var flash = Math.pow(Math.max(0, bass), 1.55);
-    var branchCount = Math.floor(4 + mid * 10 + high * 7);
+    var branchCount = Math.floor(3 + shapeAmt * 7 + mid * 6 + high * 4);
     var segs = IS_MOBILE ? 48 : 78;
     var strikeId = Math.floor(time * (0.65 + high * 1.2 + bass * 0.6));
 
@@ -1804,7 +1827,7 @@ if(MODE==='ascii'){
 
     var minDim = Math.min(w,h);
     var time = t * (0.38 + spd * 0.75 + high * 0.45);
-    var chars = ' .:-=+*#%@';
+    var chars = shapeAmt < 0.33 ? ' .:-=+*#%@' : (shapeAmt < 0.66 ? ' .,:;irsXA253hMHGS#9B&@' : ' ▁▂▃▄▅▆▇█');
     var sizeNorm = VISUAL_SIZE_MODE === 'small' ? 0.85 : (VISUAL_SIZE_MODE === 'medium' ? 1.35 : (VISUAL_SIZE_MODE === 'large' ? 2.15 : 3.25));
 
     // Higher SIZE = larger characters/fewer cells.
@@ -1887,7 +1910,7 @@ if(MODE==='ascii'){
     ctx.shadowBlur = 0;
   }
 
-if(MODE==='pulse'){
+if(MODE==='cube'){
     // Paper Heatmap-inspired cube mode.
     // Audio input controls cube speed, scale, contour intensity, and glow.
     ctx.globalCompositeOperation = 'source-over';
@@ -2097,7 +2120,7 @@ window.addEventListener('load', function() {
   document.getElementById('detailSl').addEventListener('input',  function(e){ DETAIL  = parseInt(e.target.value); });
   var shapeSl = document.getElementById('shapeSl');
   if (shapeSl) shapeSl.addEventListener('input', function(e){ SHAPE = parseInt(e.target.value); });
-  document.getElementById('speedSl').addEventListener('input',   function(e){ SPEED   = parseInt(e.target.value); });
+  document.getElementById('speedSl') && document.getElementById('speedSl').addEventListener('input',   function(e){ SPEED   = parseInt(e.target.value); });
   var legacySizeSl = document.getElementById('sizeSl');
   if (legacySizeSl) legacySizeSl.addEventListener('input', function(e){ SIZE = parseInt(e.target.value); });
   var chaosSl = document.getElementById('chaosSl');
@@ -2713,6 +2736,7 @@ var METAL_FS = `
 precision highp float;
 uniform float uTime,uBass,uMid,uHigh,uIdle,uNoiseStrength,uRoughness,uMetalness;
 uniform int uMetalType;
+uniform vec3 uPal0,uPal1,uPal2,uPal3,uPal4,uPal5,uPal6;
 varying float vDistort;
 varying vec3  vWorldNorm;
 varying vec3  vViewPos;
@@ -2723,6 +2747,27 @@ vec3 pal(float t, vec3 a, vec3 b, vec3 c, vec3 d){
   return a + b*cos(6.28318*(c*t+d));
 }
 float sat(float x){return clamp(x,0.0,1.0);}
+
+vec3 texPal(float t){
+  t = fract(t);
+  float x = t * 6.0;
+  float i = floor(x);
+  float f = smoothstep(0.0,1.0,fract(x));
+
+  if(i < 1.0) return mix(uPal0,uPal1,f);
+  if(i < 2.0) return mix(uPal1,uPal2,f);
+  if(i < 3.0) return mix(uPal2,uPal3,f);
+  if(i < 4.0) return mix(uPal3,uPal4,f);
+  if(i < 5.0) return mix(uPal4,uPal5,f);
+  return mix(uPal5,uPal6,f);
+}
+
+vec3 metallicPaletteColor(float t, float silverMix){
+  vec3 c = texPal(t);
+  float lum = dot(c, vec3(0.299,0.587,0.114));
+  vec3 silver = vec3(0.72 + lum*0.16, 0.74 + lum*0.13, 0.80 + lum*0.10);
+  return mix(c, silver, silverMix);
+}
 
 void main(){
   float bass=uIdle>.5?.03:uBass;
@@ -2743,48 +2788,54 @@ void main(){
   float fill = pow(max(dot(reflect(-V,N), L2),0.0), mix(45.0,10.0,uRoughness));
   float rimLight = pow(max(dot(reflect(-V,N), L3),0.0), 8.0);
 
-  // Per-type vivid palettes: 0=glass/prism, 1=fire, 2=electric, 3=prism, 4=neon, 5=violet/rainbow
-  float rt = vWorldPos.y*.22+vWorldPos.x*.14+vDistort*4.0+uTime*.20;
-  vec3 albedo = vec3(.88,.92,1.0);  // type 0: CHROME glass
+  // Texture-aware metal color.
+  // The selected global palette now drives the sphere distinctly.
+  float rt = vWorldPos.y*.22 + vWorldPos.x*.14 + vWorldPos.z*.10 + vDistort*3.25 + uTime*.085;
+  float paletteFlow = fract(rt + d*.34 + bass*.08);
 
+  vec3 palA = texPal(paletteFlow);
+  vec3 palB = texPal(paletteFlow + .18 + fresnel*.08);
+  vec3 palC = texPal(paletteFlow + .48 + mid*.06);
+
+  // Chrome-first base, but palette-tinted enough that each texture reads clearly.
+  vec3 albedo = metallicPaletteColor(paletteFlow, 0.38);
+  albedo = mix(albedo, palB, .22 + fresnel*.28);
+  albedo = mix(albedo, palC, sat(vDistort*1.4 + .25) * .18);
+
+  // Make specific palette families feel extra distinct without relying on old material presets.
   if(uMetalType==1){
-    // FIRE: deep orange-red core → yellow-white hot tip
-    float ft = sat(vDistort*3.+.5+bass*2.);
-    albedo = mix(vec3(0.7,0.05,0.0), mix(vec3(1.0,0.38,0.0),vec3(1.0,0.95,0.3),ft*ft), ft);
+    // FIRE behavior: hotter cores.
+    albedo = mix(albedo, texPal(.78 + d*.18), .32 + bass*.20);
   }
   else if(uMetalType==2){
-    // ELECTRIC: neon purple → electric green
-    float et = sat(sin(rt*4.+uTime*.4)*.5+.5+vDistort*2.);
-    albedo = mix(vec3(0.5,0.0,1.0), vec3(0.1,1.0,0.2), et);
+    // ELECTRIC behavior: sharper green/cyan highlights.
+    albedo = mix(albedo, texPal(.42 + sin(rt*3.0)*.12), .30 + high*.20);
   }
   else if(uMetalType==3){
-    // PRISM: glass iridescence — white core, rainbow edge
-    float pt2 = sat(length(N.xy)*.8+vDistort*2.);
-    albedo = pal(pt2+rt*.3, vec3(.85,.88,1.0), vec3(.12,.10,.12), vec3(1.0,1.0,1.0), vec3(0.,.33,.67));
-    albedo = mix(vec3(.9,.95,1.0), albedo, pt2*.8+.2);
+    // PRISM behavior: cleaner glassy spectral shifts.
+    albedo = mix(metallicPaletteColor(paletteFlow + fresnel*.25, .22), albedo, .42);
   }
   else if(uMetalType==4){
-    // NEON: dark base with UV cyan-magenta glow
-    float nt = sat(vDistort*3.+bass*3.+.3);
-    albedo = mix(vec3(0.01,0.0,0.04), mix(vec3(0.0,0.85,0.8),vec3(0.9,0.0,0.6),sin(rt*3.)*.5+.5), nt);
+    // NEON/UV behavior: darker base, louder edges.
+    albedo = mix(albedo * .55, texPal(paletteFlow + .33), fresnel*.55 + high*.12);
   }
   else if(uMetalType==5){
-    // VIOLET: deep purple → pink → cobalt
-    albedo = pal(rt, vec3(.55,.0,.7), vec3(.45,.3,.3), vec3(1.0,.8,1.0), vec3(.0,.15,.4));
+    // RAINBOW/VINTAGE behavior: broader surface bands.
+    albedo = mix(albedo, texPal(vWorldPos.y*.18 + uTime*.035 + d*.25), .38);
   }
 
   // metal lighting, kept intentionally simple to avoid shader compatibility problems
   vec3 envTop = mix(vec3(.08,.10,.16), vec3(.68,.82,1.0), sat(N.y*.5+.5));
-  vec3 envWarm = vec3(1.0,.58,.28) * pow(max(dot(reflect(-V,N), normalize(vec3(-.8,.2,1.0))),0.0), 22.0);
+  vec3 envWarm = texPal(.12 + paletteFlow*.2) * pow(max(dot(reflect(-V,N), normalize(vec3(-.8,.2,1.0))),0.0), 22.0);
   vec3 spec = vec3(1.0) * key * (1.1 + uMetalness);
-  spec += vec3(.45,.65,1.0) * fill * .65;
-  spec += vec3(.7,.85,1.0) * rimLight * .35;
+  spec += texPal(paletteFlow + .35) * fill * .65;
+  spec += texPal(paletteFlow + .62) * rimLight * .35;
 
   vec3 col = albedo * (envTop*.45 + .18) + spec + envWarm*.35;
   col += albedo * fresnel * (.35 + uMetalness*.45);
-  col += vec3(1.0,.42,.08) * bass * bass * .35;
-  col += vec3(.65,.75,1.0) * high * .16;
-  col = mix(col, col + pal(d + uTime*.05, vec3(.35), vec3(.25), vec3(1.0), vec3(.0,.33,.67)), (mid+high)*.12);
+  col += texPal(.10 + paletteFlow*.12) * bass * bass * .35;
+  col += texPal(.55 + paletteFlow*.2) * high * .16;
+  col = mix(col, col + texPal(d + uTime*.035), (mid+high)*.14);
 
   if(uMetalType==4){
     col *= .55;
@@ -2853,7 +2904,7 @@ function ulocs(p, names) {
   return o;
 }
 var oU = ulocs(orbProg,   ['uTime','uBass','uMid','uHigh','uFreq','uDetail','uSpeed','uIdle','uTex','uMVP']);
-var mU = ulocs(metalProg, ['uTime','uBass','uMid','uHigh','uIdle','uSpeed','uNoiseDensity','uNoiseStrength','uFrequency','uAmplitude','uRoughness','uMetalness','uMetalType','uMVP']);
+var mU = ulocs(metalProg, ['uTime','uBass','uMid','uHigh','uIdle','uSpeed','uNoiseDensity','uNoiseStrength','uFrequency','uAmplitude','uRoughness','uMetalness','uMetalType','uPal0','uPal1','uPal2','uPal3','uPal4','uPal5','uPal6','uMVP']);
 var iU = ulocs(irisProg,  ['uTime','uSpeed','uBass','uMid','uHigh','uIdle','uResolution','uTex']); // uTex is float now
 
 var oAPos=orbProg?gl.getAttribLocation(orbProg,'aPos'):-1,   oANorm=orbProg?gl.getAttribLocation(orbProg,'aNorm'):-1;
@@ -2957,7 +3008,7 @@ document.addEventListener('keydown',function(e){
   if(key===' '&&MODE==='ripple'){e.preventDefault();fluid.triggerSplat(1.0);}
 
   // Number keys 1-0 + numpad switch modes
-  var numModes=['ripple','lightning','ascii','bio','orb','metal','osc','fft','lissajous','retrowave','star','iris','pulse','tiedye'];
+  var numModes = ['tiedye','ripple','lightning','ascii','bio','orb','metal','osc','fft','lissajous','retrowave','star','iris','cube'];
   var numKey = null;
   if(e.key>='1'&&e.key<='9') numKey = parseInt(e.key)-1;
   if(e.key==='0') numKey = 9;
@@ -3346,8 +3397,8 @@ function animate(){
     gl.uniformMatrix4fv(oU.uMVP,false,mvp);
     gl.uniform1f(oU.uTime,t);
     gl.uniform1f(oU.uBass,sBass); gl.uniform1f(oU.uMid,sMid); gl.uniform1f(oU.uHigh,sHigh);
-    gl.uniform1f(oU.uFreq,sFreq); gl.uniform1f(oU.uDetail,DETAIL*.45+.4);
-    gl.uniform1f(oU.uSpeed,spd+sBass*.6); gl.uniform1f(oU.uIdle,idle);
+    gl.uniform1f(oU.uFreq,sFreq); gl.uniform1f(oU.uDetail,(DETAIL*.45+.4) * (0.75 + getVisualizerShape()*0.75));
+    gl.uniform1f(oU.uSpeed,(spd+sBass*.6) * getGlobalSpeedScale()); gl.uniform1f(oU.uIdle,idle);
     gl.uniform1i(oU.uTex,TEX);
     if(WIRE){gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER,wireBuf);gl.drawElements(gl.LINES,geo.wire.length,gl.UNSIGNED_SHORT,0);}
     else{gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER,triBuf);gl.drawElements(gl.TRIANGLES,geo.tri.length,gl.UNSIGNED_SHORT,0);}
@@ -3377,10 +3428,10 @@ function animate(){
     gl.uniform1f(mU.uTime,t);
     gl.uniform1f(mU.uBass,mBassSm); gl.uniform1f(mU.uMid,mMidSm); gl.uniform1f(mU.uHigh,mHighSm);
     gl.uniform1f(mU.uIdle,idle);
-    gl.uniform1f(mU.uSpeed,spd+mBassSm*.15);
+    gl.uniform1f(mU.uSpeed,(spd+mBassSm*.15) * getGlobalSpeedScale());
 
     // Noise density from M_NOISE slider
-    var density = M_NOISE * 1.5;
+    var density = M_NOISE * (1.0 + getVisualizerShape()*1.25);
     // Base strength from M_DISP, audio violence on top
     var baseStr = M_DISP;
     var violence = micActive ? mBassSm*0.75+mMidSm*0.28+mHighSm*0.10 : 0;
@@ -3393,6 +3444,16 @@ function animate(){
     gl.uniform1f(mU.uRoughness,     M_ROUGH);
     gl.uniform1f(mU.uMetalness,     M_METAL);
     gl.uniform1i(mU.uMetalType,M_TYPE);
+
+    // Send selected texture palette directly into metal sphere shader.
+    var metalPalette = (typeof currentPalette === 'function') ? currentPalette() : PALETTES[TEXTURE_KEYS[TEX]];
+    if (metalPalette && mU.uPal0) {
+      for (var pi = 0; pi < 7; pi++) {
+        var pc = metalPalette[Math.min(pi, metalPalette.length - 1)];
+        gl.uniform3f(mU['uPal' + pi], pc[0] / 255, pc[1] / 255, pc[2] / 255);
+      }
+    }
+
 
     // Always draw solid triangles for metal (looks better)
     gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER,triBuf);
@@ -3424,7 +3485,41 @@ function animate(){
     gl.enableVertexAttribArray(iAPos);
     gl.vertexAttribPointer(iAPos, 2, gl.FLOAT, false, 0, 0);
 
-    var iSpeed = spd * (0.75 + (idle > 0.5 ? 0.0 : sBass * 0.5));
+    var iSpeed = spd * getGlobalSpeedScale() * (0.75 + (idle > 0.5 ? 0.0 : sBass * 0.5));
+
+    // Heavy analog grain overlay for IRIS mode
+    if(MODE==='iris'){
+      try{
+        var grainCount = IS_MOBILE ? 2200 : 4200;
+        var grainAlphaBase = 0.045;
+        vizCtx2d.save();
+        vizCtx2d.globalCompositeOperation = 'overlay';
+
+        for(var gi=0; gi<grainCount; gi++){
+          var gx = Math.random() * w;
+          var gy = Math.random() * h;
+
+          var gRand = Math.random();
+          var gSize = gRand > 0.92 ? 2 : 1;
+
+          var ga = grainAlphaBase * (0.35 + Math.random());
+
+          vizCtx2d.fillStyle =
+            gRand > 0.5
+              ? 'rgba(255,255,255,' + ga + ')'
+              : 'rgba(0,0,0,' + (ga * 0.9) + ')';
+
+          vizCtx2d.fillRect(gx, gy, gSize, gSize);
+        }
+
+        // subtle film flicker
+        vizCtx2d.fillStyle = 'rgba(255,255,255,' + (0.012 + Math.random() * 0.01) + ')';
+        vizCtx2d.fillRect(0,0,w,h);
+
+        vizCtx2d.restore();
+      }catch(e){}
+    }
+
 
     gl.uniform1f(iU.uTime,      t);
     gl.uniform1f(iU.uSpeed,     iSpeed);
@@ -3449,14 +3544,22 @@ function animate(){
 
   // ── BIOLUMINESCENCE ───────────────────────────────────────
   if(MODE==='bio' && typeof bioSim !== 'undefined'){
-    try { bioSim.tick(t, sBass, sMid, sHigh, spd, bloom); }
+    try { bioSim.tick(t, sBass, sMid, sHigh, spd * getGlobalSpeedScale(), bloom); }
     catch(e) { console.warn('bioSim.tick error:', e); }
   }
 
   // ── TIE DYE ──────────────────────────────────────────────
   if(MODE==='tiedye' && typeof tieDyeSim !== 'undefined'){
-    try { tieDyeSim.tick(t, sBass, sMid, sHigh, spd); }
+    try { tieDyeSim.tick(t, sBass, sMid, sHigh, spd * getGlobalSpeedScale()); }
     catch(e) { console.warn('tieDyeSim.tick error:', e); }
+  }
+
+  // Global control bridge for Fluid mode
+  if(MODE==='ripple' && typeof fluid !== 'undefined'){
+    try {
+      if(typeof fluid.setSize === 'function') fluid.setSize(18 + getVisualSizeScale() * 24);
+      if(typeof fluid.setDensity === 'function') fluid.setDensity(18 + getVisualizerShape() * 70);
+    } catch(e) {}
   }
 
   // ── FLUID MODE ────────────────────────────────────────────
@@ -3466,7 +3569,7 @@ function animate(){
     fluid.tick(t, sBass, sMid, sHigh, beatVal);
   }
 
-  if(['osc','fft','dots','lissajous','retrowave','star','pulse','lightning','ascii'].indexOf(MODE)!==-1){
+  if(['osc','fft','dots','lissajous','retrowave','star','cube','lightning','ascii'].indexOf(MODE)!==-1){
     drawExtraVisualizer(t, spd, bloom);
   }
 
@@ -4193,7 +4296,7 @@ var tieDyeSim = (function(){
   };
 
   window.cycleMode = function(direction){
-    var modes = window.autoVJModes || ['ripple','lightning','ascii','bio','orb','metal','osc','fft','lissajous','retrowave','star','iris','pulse','tiedye'];
+    var modes = window.autoVJModes || ['ripple','lightning','ascii','bio','orb','metal','osc','fft','lissajous','retrowave','star','iris','cube','tiedye'];
     var currentIndex = modes.indexOf(window.MODE);
 
     if (currentIndex < 0) currentIndex = 0;

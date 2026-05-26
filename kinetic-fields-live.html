@@ -1,4 +1,3 @@
-
 <!DOCTYPE html>
 <html lang="en">
 <head>
@@ -406,6 +405,7 @@ body::after { content: ''; position: fixed; inset: 0; pointer-events: none; z-in
 <div id="mode-transition"></div>
 <canvas id="glc"></canvas>
 <canvas id="viz-canvas" style="position:fixed;inset:0;width:100%;height:100%;display:none;pointer-events:none;z-index:8;background:transparent;contain:strict;touch-action:none"></canvas>
+<canvas id="viz-2d-canvas" style="position:fixed;inset:0;width:100%;height:100%;display:none;pointer-events:none;z-index:8;background:transparent;contain:strict;touch-action:none"></canvas>
 <canvas id="fluid-canvas" style="position:fixed;inset:0;width:100%;height:100%;display:none;pointer-events:none;z-index:2;contain:strict;touch-action:none"></canvas>
 <canvas id="bio-canvas"   style="position:fixed;inset:0;width:100%;height:100%;display:none;z-index:8;contain:strict;touch-action:none"></canvas>
 <canvas id="tiedye-canvas" style="position:fixed;inset:0;width:100%;height:100%;display:none;z-index:8;contain:strict;touch-action:none"></canvas>
@@ -441,9 +441,7 @@ body::after { content: ''; position: fixed; inset: 0; pointer-events: none; z-in
     <div class="vd"></div>
     <button class="t"    id="btn-ascii" onclick="setMode('ascii')">▦ ASCII</button>
     <div class="vd"></div>
-    <button class="t"    id="btn-plasma" onclick="setMode('plasma')">☼ PLASMA</button>
-    <div class="vd"></div>
-    <button class="t"    id="btn-liquidrainbow" onclick="setMode('liquidrainbow')">≈ LIQUID RAINBOW</button>
+    <button class="t"    id="btn-joy" onclick="setMode('joy')">▤ JOY</button>
     <div class="vd"></div>
     <button class="t"    id="btn-orb"    onclick="setMode('orb')">⬡ ORB BLOB</button>
     <div class="vd"></div>
@@ -464,7 +462,7 @@ body::after { content: ''; position: fixed; inset: 0; pointer-events: none; z-in
     <div class="vd"></div>
     <button class="t"    id="btn-iris"  onclick="setMode('iris')">⌬ IRIS</button>
     <div class="vd"></div>
-    <button class="t"    id="btn-pulse" onclick="setMode('pulse')">◉ PULSE</button>
+    <button class="t"    id="btn-pulse" onclick="setMode('pulse')">◲ CUBE</button>
     <div class="vd"></div>
     <button class="t"    id="btn-tiedye" onclick="setMode('tiedye')">◈ TIE DYE</button>
   </div>
@@ -735,7 +733,7 @@ var autoVJActive = false;
 var autoVJTimer = null;
 var autoVJIndex = 0;
 var autoVJIntervalMs = 12000;
-var autoVJModes = ['ripple','liquidmetal','lightning','ascii','plasma','liquidrainbow','bio','orb','metal','osc','fft','lissajous','retrowave','star','iris','pulse','tiedye'];
+var autoVJModes = ['ripple','liquidmetal','lightning','ascii','joy','bio','orb','metal','osc','fft','lissajous','retrowave','star','iris','pulse','tiedye'];
 // Metal sphere params
 var M_NOISE   = 1.16;
 var M_DISP    = 0.45;
@@ -757,7 +755,8 @@ var micGainNode = null;
 function setMode(m) {
   MODE = m;
 
-  var twoDModes = ['osc','fft','lissajous','retrowave','star','pulse','liquidmetal','lightning','ascii','plasma','liquidrainbow'];
+  var twoDModes = ['osc','fft','lissajous','retrowave','star','pulse','lightning','ascii','joy'];
+  var isLiquidMetalShader = m === 'liquidmetal';
   var is2D = twoDModes.indexOf(m) !== -1;
 
   var modeButtonIds = {
@@ -768,8 +767,7 @@ function setMode(m) {
     liquidmetal: 'btn-liquidmetal',
     lightning: 'btn-lightning',
     ascii: 'btn-ascii',
-    plasma: 'btn-plasma',
-    liquidrainbow: 'btn-liquidrainbow',
+    joy: 'btn-joy',
     osc: 'btn-osc',
     fft: 'btn-fft',
     lissajous: 'btn-lissajous',
@@ -792,7 +790,8 @@ function setMode(m) {
   var shapeLbl = document.getElementById('shape-lbl');
   var glCanvas = document.getElementById('glc');
   var fluidCanvas = document.getElementById('fluid-canvas');
-  var vizCanvas = document.getElementById('viz-canvas');
+  var vizCanvas = document.getElementById('viz-canvas');       // WebGL shader canvas for liquidmetal
+  var viz2DCanvas = document.getElementById('viz-2d-canvas');  // 2D canvas for osc/fft/ascii/etc.
 
   if (orbCtrls) orbCtrls.style.display = (m === 'orb') ? '' : 'none';
   // Metal type buttons moved to metal-sliders-row; orbCtrls handles it
@@ -811,11 +810,18 @@ function setMode(m) {
   if (texRow) texRow.style.display = '';
   if (shapeLbl) shapeLbl.textContent = m === 'metal' ? 'MATERIAL' : (is2D ? 'VISUALIZER' : 'SHAPE');
 
-  // iris/bio/tiedye use their own canvas — hide glc for those + 2D modes
-  if (glCanvas) glCanvas.style.display = (is2D || m === 'bio' || m === 'tiedye') ? 'none' : 'block';
+  // iris/bio/tiedye use their own canvas — hide glc for those + 2D/shader modes
+  if (glCanvas) glCanvas.style.display = (is2D || isLiquidMetalShader || m === 'bio' || m === 'tiedye') ? 'none' : 'block';
 
   if (vizCanvas) {
-    vizCanvas.style.display = is2D ? 'block' : 'none';
+    vizCanvas.style.display = isLiquidMetalShader ? 'block' : 'none';
+    if (isLiquidMetalShader) {
+      resizeLiquidMetalShader();
+    }
+  }
+
+  if (viz2DCanvas) {
+    viz2DCanvas.style.display = is2D ? 'block' : 'none';
     if (is2D) {
       resizeViz2D();
       if (vizCtx2d) {
@@ -847,7 +853,7 @@ function setMode(m) {
     if (fluidCanvas) fluidCanvas.style.display = 'none';
   }
 
-  if (!is2D && vizCanvas && vizCtx2d) {
+  if (!is2D && vizCtx2d) {
     vizCtx2d.setTransform(1,0,0,1,0,0);
     vizCtx2d.clearRect(0,0,vizW,vizH);
   }
@@ -1341,7 +1347,7 @@ var vizSatMult = 1.0;   // 0..1.2 saturation multiplier for 2D palettes
 var vizLightMod = 0.0;  // +/- lightness shift for 2D palettes
 
 function initViz2D(){
-  vizCanvas2d = document.getElementById('viz-canvas');
+  vizCanvas2d = document.getElementById('viz-2d-canvas');
   if(!vizCanvas2d) return;
   vizCtx2d = vizCanvas2d.getContext('2d');
   if(!vizCtx2d) return;
@@ -1378,6 +1384,177 @@ function audioByte(i){
 function hsl(h,s,l,a){
   return paletteHslFallback(h, s, l, a);
 }
+
+// ═══════════════════════════════════════════════════════════════════
+// LIQUID METAL WEBGL SHADER — fullscreen pnoise-style mercury field
+// Rendered on #viz-canvas. Other 2D modes use #viz-2d-canvas.
+// ═══════════════════════════════════════════════════════════════════
+var lmCanvas=null, lmGl=null, lmProgram=null, lmQuad=null, lmW=1, lmH=1, lmDpr=1;
+function initLiquidMetalShader(){
+  lmCanvas = document.getElementById('viz-canvas');
+  if(!lmCanvas) return false;
+  if(lmGl && lmProgram) return true;
+
+  lmGl = lmCanvas.getContext('webgl', {alpha:true, antialias:false, depth:false, stencil:false, premultipliedAlpha:false}) ||
+         lmCanvas.getContext('experimental-webgl', {alpha:true, antialias:false, depth:false, stencil:false, premultipliedAlpha:false});
+  if(!lmGl){ console.warn('Liquid metal shader: WebGL unavailable'); return false; }
+
+  var vs = [
+    'attribute vec2 a_pos;',
+    'varying vec2 v_uv;',
+    'void main(){',
+    '  v_uv = a_pos * 0.5 + 0.5;',
+    '  gl_Position = vec4(a_pos, 0.0, 1.0);',
+    '}'
+  ].join('\n');
+
+  var fs = [
+    'precision mediump float;',
+    'varying vec2 v_uv;',
+    'uniform vec2 u_resolution;',
+    'uniform float u_time;',
+    'uniform float u_bass;',
+    'uniform float u_mid;',
+    'uniform float u_high;',
+    'uniform float u_speed;',
+    'uniform int u_tex;',
+
+    // Fullscreen liquid metal: monochrome mercury pnoise field with bright specular seams.
+    // Built to look closer to a true reflective liquid-metal surface than a color plasma.
+    'vec2 hash2(vec2 p){',
+    '  p = vec2(dot(p,vec2(127.1,311.7)), dot(p,vec2(269.5,183.3)));',
+    '  return -1.0 + 2.0*fract(sin(p)*43758.5453123);',
+    '}',
+    'float pnoise(vec2 p){',
+    '  vec2 i=floor(p); vec2 f=fract(p);',
+    '  vec2 u=f*f*f*(f*(f*6.0-15.0)+10.0);',
+    '  return mix(mix(dot(hash2(i+vec2(0.0,0.0)), f-vec2(0.0,0.0)),',
+    '                 dot(hash2(i+vec2(1.0,0.0)), f-vec2(1.0,0.0)), u.x),',
+    '             mix(dot(hash2(i+vec2(0.0,1.0)), f-vec2(0.0,1.0)),',
+    '                 dot(hash2(i+vec2(1.0,1.0)), f-vec2(1.0,1.0)), u.x), u.y);',
+    '}',
+    'float fbm(vec2 p){',
+    '  float v=0.0; float a=0.52;',
+    '  mat2 m=mat2(1.58,1.21,-1.21,1.58);',
+    '  for(int i=0;i<6;i++){ v += a*pnoise(p); p = m*p + 17.31; a *= 0.53; }',
+    '  return v;',
+    '}',
+    'float field(vec2 p,float t){',
+    '  vec2 q = p;',
+    '  q += 0.18*vec2(fbm(p*1.35 + vec2(t*.18,-t*.10)), fbm(p*1.35 + vec2(-t*.12,t*.16)));',
+    '  float n = fbm(q*2.05 + vec2(t*.20,-t*.17));',
+    '  n += 0.55*fbm(q*4.15 + n*1.35 + vec2(-t*.11,t*.14));',
+    '  n += 0.23*fbm(q*8.0 - n + vec2(t*.07,t*.05));',
+    '  return n;',
+    '}',
+    'vec3 textureTint(float x){',
+    '  x=fract(x);',
+    '  if(u_tex==1) return mix(vec3(1.00,0.77,0.48), vec3(1.00,0.35,0.09), x);',
+    '  if(u_tex==2) return mix(vec3(0.62,0.92,1.00), vec3(0.86,1.00,1.00), x);',
+    '  if(u_tex==3) return 0.78 + 0.22*cos(6.28318*(x+vec3(0.00,0.33,0.67)));',
+    '  if(u_tex==4) return mix(vec3(0.65,1.00,0.90), vec3(1.00,0.55,0.94), x);',
+    '  if(u_tex==5) return mix(vec3(0.72,0.58,1.00), vec3(0.60,0.95,1.00), x);',
+    '  if(u_tex==6) return mix(vec3(0.90,0.82,0.66), vec3(0.98,0.60,0.28), x);',
+    '  return vec3(0.92,0.95,1.0);',
+    '}',
+    'void main(){',
+    '  vec2 uv = (gl_FragCoord.xy - 0.5*u_resolution.xy) / min(u_resolution.x,u_resolution.y);',
+    '  float t = u_time*(0.18 + u_speed*0.62 + u_bass*0.36);',
+    '  vec2 p = uv;',
+    '  float r = length(p);',
+    '  float angle = atan(p.y,p.x);',
+    '  p += 0.055*vec2(sin(angle*3.0+t*1.3), cos(angle*2.0-t*.9));',
+    '  p += 0.030*vec2(sin(p.y*8.0+t), cos(p.x*7.0-t));',
+    '  float f = field(p,t);',
+    '  float e = 0.0028 + u_high*0.0015;',
+    '  float fx = field(p+vec2(e,0.0),t) - field(p-vec2(e,0.0),t);',
+    '  float fy = field(p+vec2(0.0,e),t) - field(p-vec2(0.0,e),t);',
+    '  vec3 n = normalize(vec3(-fx*54.0, -fy*54.0, 1.0));',
+    '  vec3 l1 = normalize(vec3(-0.42,0.58,0.72));',
+    '  vec3 l2 = normalize(vec3(0.78,-0.22,0.52));',
+    '  vec3 v = vec3(0.0,0.0,1.0);',
+    '  float diff = max(dot(n,l1),0.0)*0.58 + max(dot(n,l2),0.0)*0.32;',
+    '  float spec = pow(max(dot(reflect(-l1,n),v),0.0), 42.0) + pow(max(dot(reflect(-l2,n),v),0.0), 74.0)*0.75;',
+    '  float seams = pow(1.0-smoothstep(0.015,0.18,abs(fract(f*3.2+t*.035)-0.5)), 3.0);',
+    '  float folds = smoothstep(0.18,0.92,abs(f))*0.65;',
+    '  vec3 tint = textureTint(f*.16 + t*.025);',
+    '  vec3 chrome = mix(vec3(0.018,0.019,0.022), tint, 0.12);',
+    '  chrome += vec3(diff)*(0.34 + u_mid*0.18);',
+    '  chrome += vec3(spec)*(1.20 + u_high*1.35 + u_bass*.45);',
+    '  chrome += tint*seams*(0.20 + u_mid*.22);',
+    '  chrome += vec3(folds)*0.18;',
+    '  float vignette = smoothstep(1.18,0.12,r);',
+    '  chrome *= vignette;',
+    '  chrome = pow(chrome, vec3(0.82));',
+    '  gl_FragColor = vec4(chrome,1.0);',
+    '}'
+  ].join('\n');
+
+  function sh(type, src){
+    var s=lmGl.createShader(type); lmGl.shaderSource(s,src); lmGl.compileShader(s);
+    if(!lmGl.getShaderParameter(s,lmGl.COMPILE_STATUS)){ throw new Error(lmGl.getShaderInfoLog(s)); }
+    return s;
+  }
+  lmProgram=lmGl.createProgram();
+  lmGl.attachShader(lmProgram, sh(lmGl.VERTEX_SHADER, vs));
+  lmGl.attachShader(lmProgram, sh(lmGl.FRAGMENT_SHADER, fs));
+  lmGl.linkProgram(lmProgram);
+  if(!lmGl.getProgramParameter(lmProgram,lmGl.LINK_STATUS)){ throw new Error(lmGl.getProgramInfoLog(lmProgram)); }
+  lmQuad=lmGl.createBuffer();
+  lmGl.bindBuffer(lmGl.ARRAY_BUFFER,lmQuad);
+  lmGl.bufferData(lmGl.ARRAY_BUFFER,new Float32Array([-1,-1,1,-1,-1,1,-1,1,1,-1,1,1]),lmGl.STATIC_DRAW);
+  resizeLiquidMetalShader();
+  return true;
+}
+function resizeLiquidMetalShader(){
+  if(!lmCanvas) lmCanvas = document.getElementById('viz-canvas');
+  if(!lmCanvas) return;
+  lmDpr = Math.min(window.devicePixelRatio||1,(IS_MOBILE?1.15:1.5));
+  lmW = Math.max(1,Math.floor(window.innerWidth*lmDpr));
+  lmH = Math.max(1,Math.floor(window.innerHeight*lmDpr));
+  if(lmCanvas.width!==lmW || lmCanvas.height!==lmH){ lmCanvas.width=lmW; lmCanvas.height=lmH; }
+  if(lmGl) lmGl.viewport(0,0,lmW,lmH);
+}
+function drawLiquidMetalShader(t, spd, bass, mid, high, freq){
+  if(!initLiquidMetalShader()) return;
+  resizeLiquidMetalShader();
+  lmGl.useProgram(lmProgram);
+  lmGl.bindBuffer(lmGl.ARRAY_BUFFER,lmQuad);
+  var a=lmGl.getAttribLocation(lmProgram,'a_pos');
+  lmGl.enableVertexAttribArray(a);
+  lmGl.vertexAttribPointer(a,2,lmGl.FLOAT,false,0,0);
+  lmGl.uniform2f(lmGl.getUniformLocation(lmProgram,'u_resolution'),lmW,lmH);
+  lmGl.uniform1f(lmGl.getUniformLocation(lmProgram,'u_time'),t);
+  lmGl.uniform1f(lmGl.getUniformLocation(lmProgram,'u_bass'),bass||0);
+  lmGl.uniform1f(lmGl.getUniformLocation(lmProgram,'u_mid'),mid||0);
+  lmGl.uniform1f(lmGl.getUniformLocation(lmProgram,'u_high'),high||0);
+  lmGl.uniform1f(lmGl.getUniformLocation(lmProgram,'u_speed'),spd||0.7);
+  lmGl.uniform1i(lmGl.getUniformLocation(lmProgram,'u_tex'),TEX||0);
+  lmGl.drawArrays(lmGl.TRIANGLES,0,6);
+}
+
+
+// JOY cache: precomputed seeds + reusable point buffers.
+// Keeps the Unknown Pleasures look while avoiding duplicate gaussian loops per line.
+var joyCache = { w:0, h:0, lines:0, points:0, rows:null, ybuf:null };
+function ensureJoyCache(w,h,lines,points){
+  if(joyCache.w===w && joyCache.h===h && joyCache.lines===lines && joyCache.points===points && joyCache.rows) return joyCache;
+  joyCache = { w:w, h:h, lines:lines, points:points, rows:[], ybuf:[] };
+  for(var li=0; li<lines; li++){
+    var peaks = 2 + ((li * 17) % 3);
+    var row = { peaks: peaks, seed: [], sinSeed: [], sigmaBase: [] };
+    for(var pk=0; pk<peaks; pk++){
+      var seed = li * 19.17 + pk * 31.73;
+      row.seed.push(seed);
+      row.sinSeed.push(Math.sin(seed));
+      row.sigmaBase.push(0.025 + 0.020 * (0.5 + 0.5 * Math.sin(seed * 1.7)));
+    }
+    joyCache.rows.push(row);
+    joyCache.ybuf.push(new Float32Array(points + 1));
+  }
+  return joyCache;
+}
+
 function drawExtraVisualizer(t, spd, bloom){
   if(!vizCtx2d) initViz2D();
   if(!vizCtx2d) return;
@@ -1602,171 +1779,6 @@ function drawExtraVisualizer(t, spd, bloom){
       ctx.fill();
     }
   }
-  else 
-  if(MODE==='liquidmetal'){
-    // Liquid Metal — shared-palette mercury/metaball field.
-    // Uses the same 7 texture palettes as every other mode.
-    ctx.globalCompositeOperation='source-over';
-    ctx.fillStyle='rgba(0,0,0,0.24)';
-    ctx.fillRect(0,0,w,h);
-
-    var minDim = Math.min(w,h);
-    var time = t * (0.15 + spd * 0.28 + bass * 0.34);
-    var step = IS_MOBILE ? 8 : 6;
-    var cols = Math.ceil(w / step);
-    var rows = Math.ceil(h / step);
-
-    var blobCount = IS_MOBILE ? 7 : 10;
-    var blobs = [];
-
-    for(var bi=0; bi<blobCount; bi++){
-      var phase = bi * 1.618;
-      var orbit = minDim * (0.10 + (bi % 4) * 0.045 + bass * 0.04);
-
-      blobs.push({
-        x: cx +
-          Math.sin(time * (0.74 + bi * 0.035) + phase) * orbit +
-          Math.sin(time * 0.33 + phase * 2.1) * minDim * 0.055,
-        y: cy +
-          Math.cos(time * (0.57 + bi * 0.028) + phase * 1.4) * orbit * 0.82 +
-          Math.cos(time * 0.41 + phase * 1.7) * minDim * 0.04,
-        r: minDim * (0.13 + 0.025 * Math.sin(time + phase) + bass * 0.06 + mid * 0.03)
-      });
-    }
-
-    function clamp01(v){
-      return Math.max(0, Math.min(1, v));
-    }
-
-    function metalColor(v, alpha){
-      v = clamp01(v);
-
-      // Use selected shared texture palette, then add metallic contrast.
-      var c = paletteRGB(v);
-      var shine = Math.pow(v, 3.0);
-      var key = getTextureKey();
-
-      if(key === 'vintage'){
-        c = [
-          Math.round(c[0] * 0.86 + 22),
-          Math.round(c[1] * 0.80 + 18),
-          Math.round(c[2] * 0.62 + 12)
-        ];
-      } else {
-        c = [
-          Math.round(c[0] * (0.58 + shine * 0.72) + 255 * shine * 0.32),
-          Math.round(c[1] * (0.58 + shine * 0.72) + 255 * shine * 0.32),
-          Math.round(c[2] * (0.58 + shine * 0.72) + 255 * shine * 0.32)
-        ];
-      }
-
-      return 'rgba(' +
-        Math.min(255,c[0]) + ',' +
-        Math.min(255,c[1]) + ',' +
-        Math.min(255,c[2]) + ',' +
-        alpha + ')';
-    }
-
-    ctx.globalCompositeOperation='lighter';
-
-    // Smooth liquid surface field
-    for(var y0=0; y0<rows; y0++){
-      for(var x0=0; x0<cols; x0++){
-        var px = x0 * step;
-        var py = y0 * step;
-
-        var field = 0.0;
-
-        var flow =
-          Math.sin(px * 0.008 + time * 1.65) * 0.10 +
-          Math.cos(py * 0.009 - time * 1.15) * 0.10;
-
-        for(var k=0; k<blobs.length; k++){
-          var b0 = blobs[k];
-          var dx = px - b0.x;
-          var dy = py - b0.y;
-          var d2 = dx*dx + dy*dy + 1.0;
-          field += (b0.r * b0.r) / d2;
-        }
-
-        field = field * 0.13 + flow + bass * 0.20 + mid * 0.06;
-
-        var edge = clamp01((field - 0.52) * 2.8);
-        var rim = clamp01(1.0 - Math.abs(field - 0.78) * 4.7);
-        var spec = Math.pow(clamp01(Math.sin(field * 10.0 + time * 2.0) * 0.5 + 0.5), 9.0);
-
-        var intensity = clamp01(edge * 0.44 + rim * 0.36 + spec * (0.66 + high * 0.65));
-        var alpha = edge * 0.34 + rim * 0.24 + spec * 0.42;
-
-        if(alpha > 0.02){
-          ctx.fillStyle = metalColor((intensity + field * 0.18 + time * 0.025) % 1, alpha);
-          ctx.fillRect(px - step, py - step, step * 2.5, step * 2.5);
-        }
-      }
-    }
-
-    // Big palette-colored glow underneath, so every texture reads immediately.
-    var glow = ctx.createRadialGradient(cx, cy, minDim * 0.05, cx, cy, minDim * (0.58 + bass * 0.18));
-    glow.addColorStop(0.0, paletteColor((time * 0.08 + 0.12) % 1, 0.18 + bass * 0.18));
-    glow.addColorStop(0.45, paletteColor((time * 0.08 + 0.42) % 1, 0.10 + mid * 0.12));
-    glow.addColorStop(1.0, 'rgba(0,0,0,0)');
-    ctx.fillStyle = glow;
-    ctx.beginPath();
-    ctx.arc(cx, cy, minDim, 0, Math.PI * 2);
-    ctx.fill();
-
-    // Specular ribbons mapped to shared texture palette.
-    ctx.globalCompositeOperation='screen';
-    for(var band=0; band<6; band++){
-      var y = cy + (band - 2.5) * minDim * 0.105 + Math.sin(time * 0.85 + band * 1.7) * minDim * 0.035;
-
-      var grad = ctx.createLinearGradient(cx - minDim * 0.55, y, cx + minDim * 0.55, y);
-      grad.addColorStop(0, 'rgba(0,0,0,0)');
-      grad.addColorStop(0.30, paletteColor((band/6 + 0.18 + time*0.04) % 1, 0.08 + high * 0.05));
-      grad.addColorStop(0.50, paletteColor((band/6 + 0.50 + time*0.04) % 1, 0.24 + bass * 0.16 + high * 0.12));
-      grad.addColorStop(0.70, paletteColor((band/6 + 0.82 + time*0.04) % 1, 0.09 + mid * 0.06));
-      grad.addColorStop(1, 'rgba(0,0,0,0)');
-
-      ctx.strokeStyle = grad;
-      ctx.lineWidth = minDim * (0.018 + bass * 0.010);
-      ctx.beginPath();
-
-      for(var i=0; i<=90; i++){
-        var p = i / 90;
-        var x = cx - minDim * 0.58 + p * minDim * 1.16;
-        var yy =
-          y +
-          Math.sin(p * Math.PI * 3.8 + time * 1.2 + band) * minDim * 0.021 +
-          Math.sin(p * Math.PI * 8.0 - time * 0.7) * minDim * 0.008;
-
-        if(i===0) ctx.moveTo(x,yy);
-        else ctx.lineTo(x,yy);
-      }
-
-      ctx.stroke();
-    }
-
-    // Dark contours add metal volume without overriding palette.
-    ctx.globalCompositeOperation='source-over';
-    ctx.strokeStyle='rgba(0,0,0,0.22)';
-    ctx.lineWidth=Math.max(1, 1.1 * vizDpr);
-
-    for(var ci=0; ci<blobs.length; ci++){
-      var bb=blobs[ci];
-      ctx.beginPath();
-      ctx.ellipse(
-        bb.x,
-        bb.y,
-        bb.r * (1.2 + bass*0.2),
-        bb.r * (0.78 + mid*0.15),
-        time*0.25 + ci,
-        0,
-        Math.PI*2
-      );
-      ctx.stroke();
-    }
-  }
-
 if(MODE==='lightning'){
     // Lightning — Shadertoy-inspired branching electric bolts.
     // Audio drives branch count, jitter, flash, and bolt thickness.
@@ -1888,27 +1900,37 @@ if(MODE==='lightning'){
 
     ctx.shadowBlur = 0;
   }
-
-
   if(MODE==='ascii'){
-    // ASCII — shader-inspired character field.
-    // Uses shared texture palette; audio controls density, scale, and brightness.
+    // ASCII — same visual language, lower CPU/GPU churn.
+    // Perf changes: throttled layout cache, DPR-aware grid, no per-character shadow on every glyph.
     ctx.globalCompositeOperation='source-over';
-    ctx.fillStyle='rgba(0,0,0,0.32)';
+    ctx.fillStyle='rgba(0,0,0,0.34)';
     ctx.fillRect(0,0,w,h);
 
     var minDim = Math.min(w,h);
     var time = t * (0.55 + spd * 1.1 + high * 0.8);
     var chars = ' .:-=+*#%@';
-    var cell = Math.max(8, Math.floor(minDim / (IS_MOBILE ? 38 : 58)));
-    var fontSize = cell * (0.92 + bass * 0.45);
+    var cell = Math.max(9, Math.floor(minDim / (IS_MOBILE ? 34 : 52)));
+    var fontSize = cell * (0.92 + bass * 0.35);
 
     ctx.font = '900 ' + fontSize + 'px monospace';
     ctx.textAlign = 'center';
     ctx.textBaseline = 'middle';
 
+    // Draw a soft palette haze once instead of applying expensive shadowBlur per glyph.
+    ctx.save();
+    ctx.globalCompositeOperation='screen';
+    var asciiGlow = ctx.createRadialGradient(cx, cy, minDim*0.04, cx, cy, minDim*(0.62 + bass*0.22));
+    asciiGlow.addColorStop(0, paletteColor((time*0.06) % 1, 0.16 + bass*0.12));
+    asciiGlow.addColorStop(0.58, paletteColor((time*0.06 + 0.36) % 1, 0.08 + high*0.08));
+    asciiGlow.addColorStop(1, 'rgba(0,0,0,0)');
+    ctx.fillStyle = asciiGlow;
+    ctx.fillRect(0,0,w,h);
+    ctx.restore();
+
+    var skip = IS_MOBILE ? 2 : 1;
     for(var y=0; y<h+cell; y+=cell){
-      for(var x=0; x<w+cell; x+=cell){
+      for(var x=0; x<w+cell; x+=cell*skip){
         var ux = (x - cx) / minDim;
         var uy = (y - cy) / minDim;
         var d = Math.sqrt(ux*ux + uy*uy);
@@ -1922,123 +1944,94 @@ if(MODE==='lightning'){
 
         var idx = Math.floor(v * (chars.length - 1));
         var ch = chars.charAt(idx);
-
-        ctx.fillStyle = paletteColor((v + d * 0.45 + time * 0.05) % 1, 0.18 + v * 0.74);
-        ctx.shadowBlur = (v * 8 + high * 18) * vizDpr * paletteGlowStrength();
-        ctx.shadowColor = paletteColor(v, 0.75);
+        ctx.fillStyle = paletteColor((v + d * 0.45 + time * 0.05) % 1, 0.20 + v * 0.72);
         ctx.fillText(ch, x, y);
+
+        // On mobile, fill the skipped column with a faint ghost to preserve density without full trig/color work.
+        if(skip > 1){
+          ctx.globalAlpha = 0.58;
+          ctx.fillText(ch, x + cell, y);
+          ctx.globalAlpha = 1;
+        }
       }
     }
     ctx.shadowBlur = 0;
   }
 
-  if(MODE==='plasma'){
-    // Plasma — flowing additive sine-field shader.
-    // Uses shared texture palettes; audio controls warp speed and glow.
+
+  if(MODE==='joy'){
+    // JOY — Unknown Pleasures-style signal landscape.
+    // Same look, faster path: calculate each line once, then reuse it for fill + stroke.
     ctx.globalCompositeOperation='source-over';
-    ctx.fillStyle='rgba(0,0,0,0.20)';
+    ctx.fillStyle='rgba(0,0,0,0.30)';
     ctx.fillRect(0,0,w,h);
 
-    ctx.globalCompositeOperation='lighter';
     var minDim = Math.min(w,h);
-    var time = t * (0.32 + spd * 0.85 + bass * 1.1);
-    var step = IS_MOBILE ? 8 : 6;
-    var amp = 1.0 + bass * 1.4 + mid * 0.55;
+    var time = t * (0.20 + spd * 0.55);
+    var lines = IS_MOBILE ? 54 : 78;
+    var points = IS_MOBILE ? 84 : 128;
+    var xMin = w * 0.16;
+    var xMax = w * 0.84;
+    var yMin = h * 0.18;
+    var yMax = h * 0.82;
+    var dx = (xMax - xMin) / points;
+    var dy = (yMax - yMin) / lines;
+    var amp = minDim * (0.115 + bass * 0.16 + mid * 0.045);
+    var center = (xMin + xMax) * 0.5;
+    var cache = ensureJoyCache(w,h,lines,points);
 
-    for(var py=0; py<h; py+=step){
-      for(var px=0; px<w; px+=step){
-        var x = (px - cx) / minDim;
-        var y = (py - cy) / minDim;
-        var d = Math.sqrt(x*x + y*y);
-        var a = Math.atan2(y,x);
+    ctx.lineCap='round';
+    ctx.lineJoin='round';
+    ctx.lineWidth = Math.max(1, 1.12 * vizDpr);
+    ctx.shadowBlur = (2 + high * 11) * vizDpr * paletteGlowStrength();
+    ctx.shadowColor = paletteColor((time*0.04 + 0.62) % 1, 0.45);
 
-        var v =
-          Math.sin((x * 11.0 + time * 1.7) * amp) +
-          Math.sin((y * 13.0 - time * 1.35) * amp) +
-          Math.sin((d * 24.0 - time * 2.6 + bass * 3.5)) +
-          Math.cos(a * 5.0 + time * 1.25 + mid * 2.0);
+    for(var li=0; li<lines; li++){
+      var yBase = yMin + li * dy;
+      var rowNorm = li / Math.max(1, lines - 1);
+      var rowData = cache.rows[li];
+      var ybuf = cache.ybuf[li];
+      var prevY = yBase;
 
-        var q = 0.5 + 0.5 * Math.sin(v * 1.6 + time * 0.8);
-        var alpha = 0.10 + q * 0.28 + bass * 0.08;
+      for(var pi=0; pi<=points; pi++){
+        var x = xMin + pi * dx;
+        var xn = pi / points;
+        var noise = 0;
 
-        ctx.fillStyle = paletteColor((q + time * 0.06 + d * 0.35) % 1, alpha);
-        ctx.fillRect(px - step, py - step, step * 2.2, step * 2.2);
+        for(var pk=0; pk<rowData.peaks; pk++){
+          var seed = rowData.seed[pk];
+          var drift = Math.sin(time * (0.55 + pk*0.13) + seed) * minDim * 0.045;
+          var mu = center + rowData.sinSeed[pk] * minDim * 0.11 + drift;
+          var sigma = minDim * rowData.sigmaBase[pk];
+          var z = (x - mu) / sigma;
+          noise += Math.exp(-0.5 * z * z) * (0.55 + 0.45 * Math.sin(seed + time));
+        }
+
+        var tremor = Math.sin(xn * 42 + li * 0.37 + time * 3.1) * minDim * 0.0035;
+        var yy = yBase - noise * amp * (0.45 + rowNorm * 0.95) + tremor - audioByte(Math.floor(xn * 160)) * amp * 0.12 * rowNorm;
+        ybuf[pi] = prevY * 0.28 + yy * 0.72;
+        prevY = ybuf[pi];
       }
-    }
 
-    // central bloom
-    var glow = ctx.createRadialGradient(cx, cy, minDim * 0.05, cx, cy, minDim * (0.58 + bass * 0.18));
-    glow.addColorStop(0.0, paletteColor((time * 0.10) % 1, 0.22 + bass * 0.18));
-    glow.addColorStop(0.55, paletteColor((time * 0.10 + 0.35) % 1, 0.10 + mid * 0.10));
-    glow.addColorStop(1.0, 'rgba(0,0,0,0)');
-    ctx.fillStyle = glow;
-    ctx.beginPath();
-    ctx.arc(cx, cy, minDim, 0, Math.PI * 2);
-    ctx.fill();
-  }
-
-  if(MODE==='liquidrainbow'){
-    // Liquid Rainbow — viscous flowing rainbow shader.
-    // Texture-aware: Rainbow is true spectrum, others remap the liquid flow to selected palette.
-    ctx.globalCompositeOperation='source-over';
-    ctx.fillStyle='rgba(0,0,0,0.18)';
-    ctx.fillRect(0,0,w,h);
-
-    ctx.globalCompositeOperation='lighter';
-    var minDim = Math.min(w,h);
-    var time = t * (0.20 + spd * 0.62 + bass * 0.8);
-    var step = IS_MOBILE ? 7 : 5;
-
-    for(var py=0; py<h; py+=step){
-      for(var px=0; px<w; px+=step){
-        var uvx = (px - cx) / minDim;
-        var uvy = (py - cy) / minDim;
-
-        var swirl =
-          Math.sin(uvy * 8.0 + time * 1.9) * 0.11 +
-          Math.cos(uvx * 7.0 - time * 1.4) * 0.09;
-
-        var x = uvx + Math.sin(uvy * 5.0 + time) * (0.10 + bass * 0.10);
-        var y = uvy + Math.cos(uvx * 5.0 - time) * (0.10 + mid * 0.08);
-
-        var d = Math.sqrt(x*x + y*y);
-        var angle = Math.atan2(y,x);
-
-        var flow =
-          Math.sin((x + swirl) * 9.0 + time * 2.4) +
-          Math.cos((y - swirl) * 10.0 - time * 2.0) +
-          Math.sin(d * 19.0 - time * 3.4 + angle * 2.0);
-
-        var q = (0.5 + 0.5 * Math.sin(flow + time + bass * 3.0));
-        var ribbon = Math.pow(q, 1.4);
-        var alpha = 0.10 + ribbon * 0.30 + high * 0.06;
-
-        ctx.fillStyle = paletteColor((q + angle / 6.28318 + time * 0.07) % 1, alpha);
-        ctx.beginPath();
-        ctx.ellipse(px, py, step * (1.7 + ribbon * 1.5 + bass), step * (1.1 + ribbon), angle + time * 0.2, 0, Math.PI * 2);
-        ctx.fill();
-      }
-    }
-
-    // silky highlights
-    ctx.globalCompositeOperation='screen';
-    for(var band=0; band<8; band++){
-      var y0 = cy + (band - 3.5) * minDim * 0.09 + Math.sin(time + band) * minDim * 0.025;
-      var grad = ctx.createLinearGradient(cx - minDim * 0.55, y0, cx + minDim * 0.55, y0);
-      grad.addColorStop(0.0, 'rgba(0,0,0,0)');
-      grad.addColorStop(0.5, paletteColor((band / 8 + time * 0.05) % 1, 0.12 + bass * 0.10));
-      grad.addColorStop(1.0, 'rgba(0,0,0,0)');
-      ctx.strokeStyle = grad;
-      ctx.lineWidth = minDim * (0.012 + bass * 0.01);
+      // Black under-fill gives the classic non-overlapping 3D ridge feel.
       ctx.beginPath();
-      for(var i=0;i<=90;i++){
-        var p=i/90;
-        var xx = cx - minDim*0.58 + p*minDim*1.16;
-        var yy = y0 + Math.sin(p*Math.PI*5.0 + time*1.2 + band) * minDim * 0.025;
-        if(i===0) ctx.moveTo(xx,yy); else ctx.lineTo(xx,yy);
+      ctx.moveTo(xMin, yMax + dy * 2);
+      for(var fi=0; fi<=points; fi++) ctx.lineTo(xMin + fi * dx, ybuf[fi]);
+      ctx.lineTo(xMax, yMax + dy * 2);
+      ctx.closePath();
+      ctx.fillStyle='rgba(0,0,0,0.86)';
+      ctx.fill();
+
+      ctx.beginPath();
+      for(var si=0; si<=points; si++){
+        var sx = xMin + si * dx;
+        if(si===0) ctx.moveTo(sx,ybuf[si]); else ctx.lineTo(sx,ybuf[si]);
       }
+      ctx.strokeStyle = paletteColor((rowNorm * 0.16 + time * 0.025 + 0.88) % 1, 0.62 + high * 0.22);
       ctx.stroke();
     }
+
+    ctx.shadowBlur = 0;
   }
 
 if(MODE==='pulse'){
@@ -3108,7 +3101,7 @@ document.addEventListener('keydown',function(e){
   if(key===' '&&MODE==='ripple'){e.preventDefault();fluid.triggerSplat(1.0);}
 
   // Number keys 1-0 + numpad switch modes
-  var numModes=['ripple','liquidmetal','lightning','ascii','plasma','liquidrainbow','bio','orb','metal','osc','fft','lissajous','retrowave','star','iris','pulse','tiedye'];
+  var numModes=['ripple','liquidmetal','lightning','ascii','joy','bio','orb','metal','osc','fft','lissajous','retrowave','star','iris','pulse','tiedye'];
   var numKey = null;
   if(e.key>='1'&&e.key<='9') numKey = parseInt(e.key)-1;
   if(e.key==='0') numKey = 9;
@@ -3322,7 +3315,10 @@ function animate(){
     fluid.tick(t, sBass, sMid, sHigh, beatVal);
   }
 
-  if(['osc','fft','dots','lissajous','retrowave','star','pulse','liquidmetal','lightning','ascii','plasma','liquidrainbow'].indexOf(MODE)!==-1){
+  if(MODE==='liquidmetal'){
+    drawLiquidMetalShader(t, spd, sBass, sMid, sHigh, sFreq);
+  }
+  if(['osc','fft','dots','lissajous','retrowave','star','pulse','lightning','ascii','joy'].indexOf(MODE)!==-1){
     drawExtraVisualizer(t, spd, bloom);
   }
 
@@ -4048,7 +4044,7 @@ var tieDyeSim = (function(){
   };
 
   window.cycleMode = function(direction){
-    var modes = window.autoVJModes || ['ripple','liquidmetal','lightning','ascii','plasma','liquidrainbow','bio','orb','metal','osc','fft','lissajous','retrowave','star','iris','pulse','tiedye'];
+    var modes = window.autoVJModes || ['ripple','liquidmetal','lightning','ascii','joy','bio','orb','metal','osc','fft','lissajous','retrowave','star','iris','pulse','tiedye'];
     var currentIndex = modes.indexOf(window.MODE);
 
     if (currentIndex < 0) currentIndex = 0;

@@ -865,6 +865,18 @@ function setMode(m) {
     vizCtx2d.setTransform(1,0,0,1,0,0);
     vizCtx2d.clearRect(0,0,vizW,vizH);
   }
+  if (m === 'metal') {
+    if (glCanvas) glCanvas.style.display = 'block';
+    if (vizCanvas) vizCanvas.style.display = 'none';
+    if (fluidCanvas) fluidCanvas.style.display = 'none';
+    var bioCanvasForMetal = document.getElementById('bio-canvas');
+    var tieDyeCanvasForMetal = document.getElementById('tiedye-canvas');
+    var liquidCanvasForMetal = document.getElementById('liquidmetal-canvas');
+    if (bioCanvasForMetal) bioCanvasForMetal.style.display = 'none';
+    if (tieDyeCanvasForMetal) tieDyeCanvasForMetal.style.display = 'none';
+    if (liquidCanvasForMetal) liquidCanvasForMetal.style.display = 'none';
+  }
+
 }
 
 function updateAutoVJStatus() {
@@ -1665,7 +1677,1041 @@ function drawExtraVisualizer(t, spd, bloom){
       ctx.fill();
     }
   }
-  else 
+  else if(MODE==='pulse'){
+    // Breathing dot rings — 6 concentric rings of dots, audio-reactive
+    var numRings = 6;
+    var dotsPerRing = IS_MOBILE ? 36 : 60;
+    if(!window._pulseT) window._pulseT = 0;
+    window._pulseT += 0.018 * (spd + bass*0.4);
+    var bassExpand = 1 + bass * 0.7 + mid * 0.3;
+    for(var ri=0;ri<numRings;ri++){
+      var rf = (ri+1)/numRings;
+      var baseRad = Math.min(w,h) * (0.05 + rf * 0.40) * bassExpand;
+      var breathOff = Math.sin(window._pulseT + ri*1.1) * Math.min(w,h) * (0.02 + bass*0.06);
+      var rad = baseRad + breathOff;
+      var dotSize = Math.max(1.5, (2.2 + bass*5 + mid*2.5) * vizDpr * (1 - rf*0.25));
+      for(var di=0;di<dotsPerRing;di++){
+        var dang = (di/dotsPerRing)*Math.PI*2 + window._pulseT*0.25*(ri%2===0?1:-1);
+        var audioDisplace = audioByte(Math.floor(di/dotsPerRing*255));
+        // Map 0..1 audio to ±displacement for full ring distortion
+        var distort = (micActive ? (audioDisplace*2-1) : (audioDisplace-0.5)*0.3) * Math.min(w,h) * (0.06 + bass*0.12);
+        var r2 = rad + distort;
+        var dpx = cx + Math.cos(dang)*r2;
+        var dpy = cy + Math.sin(dang)*r2;
+        var dHue = vizHue + ri*30 + di*0.8;
+        var dAlpha = 0.55 + bass*0.45;
+        ctx.beginPath();
+        ctx.arc(dpx, dpy, Math.max(0.8, dotSize), 0, Math.PI*2);
+        ctx.fillStyle = hsl(dHue, 100, 58, 0.90);
+        ctx.shadowBlur = dotSize*4;
+        ctx.shadowColor = hsl(dHue, 100, 80, dAlpha*0.6);
+        ctx.fill();
+      }
+    }
+    ctx.shadowBlur = 0;
+  }
+
+  ctx.restore();
+}
+
+
+document.addEventListener('visibilitychange', function(){
+  APP_VISIBLE = !document.hidden;
+});
+
+
+function resizeAllCanvases(){
+  if (canvas) {
+    canvas.width = Math.max(1, Math.floor(window.innerWidth));
+    canvas.height = Math.max(1, Math.floor(window.innerHeight));
+    if (gl) gl.viewport(0,0,canvas.width,canvas.height);
+  }
+  resizeViz2D();
+  if (typeof updateFieldsTextSize === 'function') updateFieldsTextSize();
+}
+
+window.addEventListener('load', function() {
+  canvas = document.getElementById('glc');
+  initViz2D();
+  canvas.width  = window.innerWidth;
+  canvas.height = window.innerHeight;
+
+  var ctxOpts = [
+    { type:'webgl2',             attrs:{antialias:true,  alpha:false}, v2:true  },
+    { type:'webgl2',             attrs:{antialias:false, alpha:false}, v2:true  },
+    { type:'webgl',              attrs:{antialias:true,  alpha:false}, v2:false },
+    { type:'webgl',              attrs:{antialias:false, alpha:false}, v2:false },
+    { type:'experimental-webgl', attrs:{antialias:false, alpha:false}, v2:false },
+  ];
+  for (var ci=0; ci<ctxOpts.length; ci++) {
+    try {
+      gl = canvas.getContext(ctxOpts[ci].type, ctxOpts[ci].attrs);
+      if (gl) { isWebGL2 = ctxOpts[ci].v2; console.log('Got', ctxOpts[ci].type); break; }
+    } catch(e) {}
+  }
+  if (!gl) {
+    document.body.innerHTML = '<div style="color:#fff;font-family:monospace;padding:40px;background:#000;height:100vh;display:flex;align-items:center;justify-content:center;text-align:center"><div><h2 style="color:#f55;margin-bottom:16px">WebGL Not Available</h2><p>Enable hardware acceleration in chrome://settings/system</p></div></div>';
+    return;
+  }
+
+  window.addEventListener('resize', resizeAllCanvases);
+
+  // ── iOS touch fallback for range sliders ───────────────────────────
+  // On iOS WebKit, range inputs inside fixed/scroll containers sometimes
+  // fail to receive touchmove. We manually compute value from touch position.
+  (function() {
+    var active = null;
+    function sliderFromTouch(slider, clientX) {
+      var rect = slider.getBoundingClientRect();
+      var min = parseFloat(slider.min) || 0;
+      var max = parseFloat(slider.max) || 100;
+      var ratio = Math.min(1, Math.max(0, (clientX - rect.left) / rect.width));
+      var step = parseFloat(slider.step) || 1;
+      var raw = min + ratio * (max - min);
+      var snapped = Math.round(raw / step) * step;
+      return Math.min(max, Math.max(min, snapped));
+    }
+    document.addEventListener('touchstart', function(e) {
+      var el = e.target;
+      if (el.tagName === 'INPUT' && el.type === 'range') {
+        active = el;
+        el.value = sliderFromTouch(el, e.touches[0].clientX);
+        el.dispatchEvent(new Event('input', { bubbles: true }));
+        e.preventDefault();
+      }
+    }, { passive: false });
+    document.addEventListener('touchmove', function(e) {
+      if (!active) return;
+      active.value = sliderFromTouch(active, e.touches[0].clientX);
+      active.dispatchEvent(new Event('input', { bubbles: true }));
+      e.preventDefault();
+    }, { passive: false });
+    document.addEventListener('touchend', function(e) {
+      if (!active) return;
+      active.dispatchEvent(new Event('change', { bubbles: true }));
+      active = null;
+    }, { passive: true });
+  })();
+
+  // Wire up sliders
+  document.getElementById('fSizeSl').addEventListener('input', function(e){
+    fluid.setParticleSize(parseInt(e.target.value) / 50.0); // 0.02..2.0 multiplier
+  });
+  document.getElementById('fDensitySl').addEventListener('input', function(e){
+    fluid.setDensity(Math.floor(parseInt(e.target.value) / 100 * (IS_MOBILE?18000:44000) + (IS_MOBILE?6000:8000))); // mobile 6k..24k, desktop 8k..52k
+  });
+  document.getElementById('detailSl').addEventListener('input',  function(e){ DETAIL  = parseInt(e.target.value); });
+  document.getElementById('speedSl').addEventListener('input',   function(e){ SPEED   = parseInt(e.target.value); });
+  document.getElementById('sizeSl').addEventListener('input',    function(e){ SIZE    = parseInt(e.target.value); });
+  var chaosSl = document.getElementById('chaosSl');
+  if(chaosSl){
+    chaosSl.addEventListener('input', function(e){
+      CHAOS = parseFloat(e.target.value);
+      var cv = document.getElementById('chaosVal');
+      if(cv) cv.textContent = Math.round(CHAOS);
+    });
+  }
+
+
+  function updateFieldsTextSize(){
+    var slider = document.getElementById('fieldsSizeSl');
+    var label = document.getElementById('fieldsSizeVal');
+    var text = document.getElementById('center-fields');
+    if (!slider || !text) return;
+
+    var size = parseFloat(slider.value);
+    if (!isFinite(size)) size = 11;
+    size = Math.min(50, Math.max(1, size));
+
+    var cssSize = size.toFixed(1) + 'vw';
+    document.documentElement.style.setProperty('--fields-font-size', cssSize);
+    text.style.setProperty('font-size', cssSize, 'important');
+    text.style.setProperty('text-shadow', 'none', 'important');
+    text.style.setProperty('filter', 'none', 'important');
+    text.style.transform = 'translate(-50%, -50%)';
+
+    if (label) label.textContent = cssSize;
+  }
+
+  var fieldsSizeSlider = document.getElementById('fieldsSizeSl');
+  if (fieldsSizeSlider) {
+    fieldsSizeSlider.addEventListener('input', updateFieldsTextSize);
+    fieldsSizeSlider.addEventListener('change', updateFieldsTextSize);
+    updateFieldsTextSize();
+    window.addEventListener('resize', updateFieldsTextSize);
+    window.addEventListener('orientationchange', function(){ setTimeout(updateFieldsTextSize, 150); });
+  }
+
+
+
+
+
+
+  var micGainSlider = document.getElementById('micGainSl');
+  if (micGainSlider) {
+    function updateMicGainFromSlider() {
+      MIC_GAIN = parseInt(micGainSlider.value, 10) / 100;
+      if (micGainNode && micGainNode.gain) micGainNode.gain.value = MIC_GAIN;
+      var micGainVal = document.getElementById('micGainVal');
+      if (micGainVal) micGainVal.textContent = MIC_GAIN.toFixed(2) + 'x';
+    }
+    micGainSlider.addEventListener('input', updateMicGainFromSlider);
+    micGainSlider.addEventListener('change', updateMicGainFromSlider);
+    updateMicGainFromSlider();
+  }
+
+
+
+  function sliderVal(id, scale, decimals, outId) {
+    document.getElementById(id).addEventListener('input', function(e) {
+      var v = parseInt(e.target.value) * scale;
+      document.getElementById(outId).textContent = v.toFixed(decimals);
+      return v;
+    });
+  }
+  document.getElementById('noiseSl').addEventListener('input', function(e) {
+    M_NOISE = parseInt(e.target.value) / 30.0;
+    document.getElementById('noiseVal').textContent = M_NOISE.toFixed(2);
+  });
+  document.getElementById('dispSl').addEventListener('input', function(e) {
+    M_DISP = parseInt(e.target.value) / 100.0;
+    document.getElementById('dispVal').textContent = M_DISP.toFixed(2);
+  });
+  document.getElementById('fractSl').addEventListener('input', function(e) {
+    M_FRACT = parseInt(e.target.value);
+    document.getElementById('fractVal').textContent = M_FRACT;
+  });
+  document.getElementById('roughSl').addEventListener('input', function(e) {
+    M_ROUGH = parseInt(e.target.value) / 100.0;
+    document.getElementById('roughVal').textContent = M_ROUGH.toFixed(2);
+  });
+  document.getElementById('metalSl').addEventListener('input', function(e) {
+    M_METAL = parseInt(e.target.value) / 100.0;
+    document.getElementById('metalVal').textContent = M_METAL.toFixed(2);
+  });
+// Mic
+  document.getElementById('mic-btn').addEventListener('click', function() {
+    if (micActive) return;
+    if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+      alert('Mic requires a secure HTTPS page or localhost. In Framer, publish/preview over HTTPS and allow microphone access.');
+      return;
+    }
+    navigator.mediaDevices.getUserMedia({audio:true,video:false})
+      .then(function(stream) {
+        var ctx = new (window.AudioContext||window.webkitAudioContext)();
+        if (ctx.state === 'suspended') ctx.resume();
+        var src = ctx.createMediaStreamSource(stream);
+        micGainNode = ctx.createGain();
+        micGainNode.gain.value = MIC_GAIN;
+        analyser = ctx.createAnalyser();
+        analyser.fftSize = 512;
+        analyser.smoothingTimeConstant = 0.82;
+        src.connect(micGainNode);
+        micGainNode.connect(analyser);
+        dataArray = new Uint8Array(analyser.frequencyBinCount);
+        micActive = true;
+        document.getElementById('mic-btn').textContent = 'MIC LIVE';
+        document.getElementById('mic-btn').classList.add('live');
+        document.getElementById('mic-dot').classList.add('live');
+      })
+      .catch(function(err) {
+        var msg = location.protocol==='file:' ?
+          'Mic requires HTTPS or localhost. In Framer, publish or preview over HTTPS and allow microphone access.' :
+          'Mic denied: ' + err.message;
+        alert(msg);
+        document.getElementById('mic-btn').textContent='DENIED';
+      });
+  });
+
+
+if (window.visualViewport) {
+  window.visualViewport.addEventListener('resize', function(){ setTimeout(resizeAllCanvases, 60); });
+}
+
+  // Apply mobile-optimised slider defaults once at startup
+  if (IS_MOBILE) {
+    var fd = document.getElementById('fDensitySl');
+    if (fd) fd.value = 24;
+    var fs = document.getElementById('fSizeSl');
+    if (fs) fs.value = 42;
+  }
+
+  initGL();
+});
+
+
+// ── Bio pixel size selector ─────────────────────────────────────────
+function setBioPixelSize(n){
+  BIO_PIXEL_SIZE = n;
+  [1,2,3,4].forEach(function(i){
+    var el = document.getElementById('bps'+i);
+    if(el) el.classList.toggle('on', i===n);
+  });
+  if(typeof bioSim !== 'undefined') bioSim.setPixelSize(n);
+}
+
+function initGL() {
+// ───────────────────────────────────────────────────────────────────
+// SHADERS
+// ───────────────────────────────────────────────────────────────────
+
+function compileShader(type, src) {
+  var s = gl.createShader(type);
+  gl.shaderSource(s, src);
+  gl.compileShader(s);
+  if (!gl.getShaderParameter(s, gl.COMPILE_STATUS)) {
+    console.error('Shader error:', gl.getShaderInfoLog(s));
+    return null;
+  }
+  return s;
+}
+function makeProgram(vsrc, fsrc) {
+  var p = gl.createProgram();
+  var vs = compileShader(gl.VERTEX_SHADER, vsrc);
+  var fs = compileShader(gl.FRAGMENT_SHADER, fsrc);
+  if(!vs || !fs) return null;
+  gl.attachShader(p, vs);
+  gl.attachShader(p, fs);
+  gl.linkProgram(p);
+  if (!gl.getProgramParameter(p, gl.LINK_STATUS)) {
+    console.error('Link error:', gl.getProgramInfoLog(p));
+    return null;
+  }
+  return p;
+}
+
+// ── SIMPLEX NOISE (shared by both sphere shaders) ──────────────────
+var SNOISE_GLSL = `
+vec3 _m3(vec3 x){return x-floor(x*(1./289.))*289.;}
+vec4 _m4(vec4 x){return x-floor(x*(1./289.))*289.;}
+vec4 _pm(vec4 x){return _m4(((x*34.)+1.)*x);}
+vec4 _ts(vec4 r){return 1.79284291-0.85373472*r;}
+float snoise(vec3 v){
+  const vec2 C=vec2(1./6.,1./3.);
+  const vec4 D=vec4(0.,.5,1.,2.);
+  vec3 i=floor(v+dot(v,C.yyy));
+  vec3 x0=v-i+dot(i,C.xxx);
+  vec3 g=step(x0.yzx,x0.xyz),l=1.-g;
+  vec3 i1=min(g.xyz,l.zxy),i2=max(g.xyz,l.zxy);
+  vec3 x1=x0-i1+C.xxx,x2=x0-i2+C.yyy,x3=x0-D.yyy;
+  i=_m3(i);
+  vec4 p=_pm(_pm(_pm(i.z+vec4(0.,i1.z,i2.z,1.))+i.y+vec4(0.,i1.y,i2.y,1.))+i.x+vec4(0.,i1.x,i2.x,1.));
+  float n_=.142857142857;
+  vec3 ns=n_*D.wyz-D.xzx;
+  vec4 j=p-49.*floor(p*ns.z*ns.z);
+  vec4 x_=floor(j*ns.z),y_=floor(j-7.*x_);
+  vec4 x=x_*ns.x+ns.yyyy,y=y_*ns.x+ns.yyyy,h=1.-abs(x)-abs(y);
+  vec4 b0=vec4(x.xy,y.xy),b1=vec4(x.zw,y.zw);
+  vec4 s0=floor(b0)*2.+1.,s1=floor(b1)*2.+1.;
+  vec4 sh=-step(h,vec4(0.));
+  vec4 a0=b0.xzyw+s0.xzyw*sh.xxyy,a1=b1.xzyw+s1.xzyw*sh.zzww;
+  vec3 p0=vec3(a0.xy,h.x),p1=vec3(a0.zw,h.y),p2=vec3(a1.xy,h.z),p3=vec3(a1.zw,h.w);
+  vec4 norm=_ts(vec4(dot(p0,p0),dot(p1,p1),dot(p2,p2),dot(p3,p3)));
+  p0*=norm.x;p1*=norm.y;p2*=norm.z;p3*=norm.w;
+  vec4 m=max(.6-vec4(dot(x0,x0),dot(x1,x1),dot(x2,x2),dot(x3,x3)),0.);
+  m=m*m;
+  return 42.*dot(m*m,vec4(dot(p0,x0),dot(p1,x1),dot(p2,x2),dot(p3,x3)));
+}`;
+
+// ── PERIODIC PERLIN NOISE (for metal sphere, Codrops-style) ────────
+var PNOISE_GLSL = `
+vec3 pm3(vec3 x){return x-floor(x*(1./289.))*289.;}
+vec4 pm4(vec4 x){return x-floor(x*(1./289.))*289.;}
+vec4 ppm(vec4 x){return pm4(((x*34.)+1.)*x);}
+vec4 pts(vec4 r){return 1.79284291-0.85373472*r;}
+float pnoise(vec3 P,vec3 rep){
+  vec3 Pi0=mod(floor(P),rep),Pi1=mod(Pi0+1.,rep);
+  Pi0=pm3(Pi0);Pi1=pm3(Pi1);
+  vec3 Pf0=fract(P),Pf1=Pf0-1.;
+  vec4 ix=vec4(Pi0.x,Pi1.x,Pi0.x,Pi1.x),iy=vec4(Pi0.yy,Pi1.yy);
+  vec4 ixy=ppm(ppm(ix)+iy);
+  vec4 ixy0=ppm(ixy+Pi0.zzzz),ixy1=ppm(ixy+Pi1.zzzz);
+  vec4 gx0=ixy0/7.,gy0=fract(floor(gx0)/7.)-.5;gx0=fract(gx0);
+  vec4 gz0=vec4(.5)-abs(gx0)-abs(gy0);vec4 sz0=step(gz0,vec4(0.));
+  gx0-=sz0*(step(0.,gx0)-.5);gy0-=sz0*(step(0.,gy0)-.5);
+  vec4 gx1=ixy1/7.,gy1=fract(floor(gx1)/7.)-.5;gx1=fract(gx1);
+  vec4 gz1=vec4(.5)-abs(gx1)-abs(gy1);vec4 sz1=step(gz1,vec4(0.));
+  gx1-=sz1*(step(0.,gx1)-.5);gy1-=sz1*(step(0.,gy1)-.5);
+  vec3 g000=vec3(gx0.x,gy0.x,gz0.x),g100=vec3(gx0.y,gy0.y,gz0.y);
+  vec3 g010=vec3(gx0.z,gy0.z,gz0.z),g110=vec3(gx0.w,gy0.w,gz0.w);
+  vec3 g001=vec3(gx1.x,gy1.x,gz1.x),g101=vec3(gx1.y,gy1.y,gz1.y);
+  vec3 g011=vec3(gx1.z,gy1.z,gz1.z),g111=vec3(gx1.w,gy1.w,gz1.w);
+  vec4 n0=pts(vec4(dot(g000,g000),dot(g010,g010),dot(g100,g100),dot(g110,g110)));
+  g000*=n0.x;g010*=n0.y;g100*=n0.z;g110*=n0.w;
+  vec4 n1=pts(vec4(dot(g001,g001),dot(g011,g011),dot(g101,g101),dot(g111,g111)));
+  g001*=n1.x;g011*=n1.y;g101*=n1.z;g111*=n1.w;
+  vec3 fade_xyz=Pf0*Pf0*Pf0*(Pf0*(Pf0*6.-15.)+10.);
+  vec4 nz=mix(vec4(dot(g000,Pf0),dot(g100,vec3(Pf1.x,Pf0.yz)),dot(g010,vec3(Pf0.x,Pf1.y,Pf0.z)),dot(g110,vec3(Pf1.xy,Pf0.z))),
+              vec4(dot(g001,vec3(Pf0.xy,Pf1.z)),dot(g101,vec3(Pf1.x,Pf0.y,Pf1.z)),dot(g011,vec3(Pf0.x,Pf1.yz)),dot(g111,Pf1)),fade_xyz.z);
+  vec2 ny=mix(nz.xy,nz.zw,fade_xyz.y);
+  return 2.2*mix(ny.x,ny.y,fade_xyz.x);
+}
+vec3 rotateY(vec3 v,float a){float c=cos(a),s=sin(a);return vec3(c*v.x+s*v.z,v.y,-s*v.x+c*v.z);}`;
+
+// ══════════════════════════════════════════════════════════════════
+// 1. ORB BLOB — original simplex noise with varyings for color
+// ══════════════════════════════════════════════════════════════════
+var ORB_VS = `
+attribute vec3 aPos;
+attribute vec3 aNorm;
+uniform float uTime,uBass,uMid,uHigh,uDetail,uSpeed,uIdle;
+uniform mat4  uMVP;
+varying vec3 vN;
+varying vec3 vP;
+varying float vWave;
+` + SNOISE_GLSL + `
+void main(){
+  float t=uTime*(0.25+uSpeed*0.15);
+  float bass=uIdle>.5?.08:uBass, mid=uIdle>.5?.04:uMid, high=uIdle>.5?.02:uHigh;
+  float d=uDetail;
+  float n1=snoise(aNorm*d+t*.4);
+  float n2=snoise(aNorm*d*2.1+t*.7+1.3);
+  float n3=snoise(aNorm*d*4.2+t*1.3+2.7);
+  float disp=n1*bass*2.6+n2*mid*1.3+n3*high*.6;
+  disp+=snoise(aNorm*1.4+t*.12)*.2;
+  vec3 p=aPos+aNorm*disp;
+  vN=normalize(aNorm);
+  vP=p;
+  vWave=n1*.55+n2*.3+n3*.15;
+  gl_Position=uMVP*vec4(p,1.);
+}`;
+
+var ORB_FS = `
+precision highp float;
+uniform float uTime,uFreq,uBass,uHigh,uIdle;
+uniform int uTex;
+varying vec3 vN;
+varying vec3 vP;
+varying float vWave;
+
+vec3 pal(float t, vec3 a, vec3 b, vec3 c, vec3 d){
+  return a + b*cos(6.28318*(c*t+d));
+}
+
+void main(){
+  float f=uIdle>.5?(sin(uTime*.38)*.5+.5)*.28:uFreq;
+  float bass=uIdle>.5?.05:uBass;
+  float high=uIdle>.5?.02:uHigh;
+  float t=uTime*.13;
+
+  vec3 n=normalize(vN);
+  vec3 p=normalize(vP);
+
+  // Spatial color drivers create the glossy multi-color orb look:
+  // vertical cyan/top, warm edges, magenta/violet base, and moving inner wave.
+  float vertical=n.y*.5+.5;
+  float horizontal=n.x*.5+.5;
+  float rim=pow(1.0-abs(n.z),2.2);
+  float wave=sin((p.x*2.8+p.y*1.4+vWave*2.2)+uTime*.8)*.5+.5;
+  float band=sin((p.y*5.2+p.x*2.6)+uTime*.55+bass*3.0)*.5+.5;
+
+  vec3 c;
+
+  if(uTex==0){
+    // RAINBOW: cyan crown, orange/red rim, violet base, pearl wave through center.
+    vec3 top=vec3(.02,.95,1.0);
+    vec3 mid=vec3(.00,.95,.72);
+    vec3 bottom=vec3(.78,.05,1.0);
+    vec3 warm=vec3(1.0,.32,.03);
+    vec3 pink=vec3(1.0,.02,.55);
+    c=mix(bottom,mid,vertical);
+    c=mix(c,top,smoothstep(.58,1.0,vertical));
+    c=mix(c,warm,rim*(.45+.45*bass));
+    c=mix(c,pink,horizontal*(1.0-vertical)*.45);
+    c+=vec3(1.0,.88,.46)*pow(band,18.0)*(0.35+high);
+  }
+  else if(uTex==1){
+    // FIRE: ember red, molten orange, yellow-white heat, smoky crimson shadows.
+    vec3 ember=vec3(.10,.00,.02);
+    vec3 red=vec3(.85,.03,.00);
+    vec3 orange=vec3(1.0,.32,.02);
+    vec3 gold=vec3(1.0,.78,.12);
+    c=mix(ember,red,wave);
+    c=mix(c,orange,smoothstep(.25,.8,vertical+rim*.4));
+    c=mix(c,gold,pow(band,8.0)*(0.45+bass));
+    c+=vec3(1.0,.18,.02)*rim*.35;
+  }
+  else if(uTex==2){
+    // ELECTRIC: blue, cyan, ultraviolet, sharp white arcs.
+    vec3 deep=vec3(.01,.02,.16);
+    vec3 blue=vec3(.02,.18,1.0);
+    vec3 cyan=vec3(.0,.95,1.0);
+    vec3 violet=vec3(.62,.08,1.0);
+    c=mix(deep,blue,wave);
+    c=mix(c,cyan,vertical*.65+high*.3);
+    c=mix(c,violet,(1.0-vertical)*.55+rim*.25);
+    c+=vec3(.75,.95,1.0)*pow(band,16.0)*(0.28+high*1.2);
+  }
+  else if(uTex==3){
+    // PRISM: translucent pearl with spectral bands.
+    vec3 pearl=vec3(.74,.88,.96);
+    vec3 cyan=vec3(.0,.95,1.0);
+    vec3 mag=vec3(1.0,.05,.75);
+    vec3 lime=vec3(.58,1.0,.18);
+    vec3 amber=vec3(1.0,.55,.06);
+    c=pearl*.42;
+    c=mix(c,cyan,smoothstep(.45,1.0,vertical)*.55);
+    c=mix(c,mag,(1.0-vertical)*.5);
+    c+=lime*pow(sin(horizontal*6.28318+t)*.5+.5,5.0)*.28;
+    c+=amber*pow(band,10.0)*.42;
+  }
+  else if(uTex==4){
+    // NEON: acid green, hot pink, cyan and blacklight blue.
+    vec3 dark=vec3(.0,.02,.035);
+    vec3 acid=vec3(.3,1.0,.05);
+    vec3 cyan=vec3(.0,.95,1.0);
+    vec3 pink=vec3(1.0,.0,.62);
+    c=mix(dark,cyan,vertical*.75);
+    c=mix(c,acid,wave*.48+bass*.2);
+    c=mix(c,pink,(1.0-vertical)*.5+rim*.35);
+    c+=vec3(.8,1.0,.2)*pow(band,14.0)*(0.25+bass);
+  }
+  else {
+    // VIOLET: purple, indigo, magenta, icy blue highlight.
+    vec3 indigo=vec3(.06,.02,.22);
+    vec3 purple=vec3(.35,.04,.78);
+    vec3 violet=vec3(.72,.06,1.0);
+    vec3 magenta=vec3(1.0,.02,.72);
+    vec3 ice=vec3(.36,.9,1.0);
+    c=mix(indigo,purple,wave);
+    c=mix(c,violet,vertical*.62);
+    c=mix(c,magenta,rim*.42+(1.0-vertical)*.25);
+    c+=ice*pow(band,12.0)*(0.18+high);
+  }
+
+  // Glassy center glow + audio brightness.
+  float centerGlow=smoothstep(.15,1.0,1.0-length(p.xy)*.45);
+  c=mix(c,c+vec3(.2,.75,.9),centerGlow*.18);
+  c*=0.72+f*.55+bass*.45+high*.25;
+
+  gl_FragColor=vec4(c,1.);
+}`;
+
+// ══════════════════════════════════════════════════════════════════
+// IRIS — Iridescent orb. Fullscreen-triangle shader adapted from
+// reactbits.dev/backgrounds/iridescence + voice-reactive orb article.
+// Rendered on the main WebGL canvas; audio drives amplitude & speed.
+// ══════════════════════════════════════════════════════════════════
+var IRIS_VS = `
+attribute vec2 aPos;
+varying vec2 vUv;
+void main(){
+  vUv = aPos * 0.5 + 0.5;
+  gl_Position = vec4(aPos, 0.0, 1.0);
+}`;
+
+var IRIS_FS = `
+precision highp float;
+uniform float uTime;
+uniform float uSpeed;
+uniform float uBass;
+uniform float uMid;
+uniform float uHigh;
+uniform float uIdle;
+uniform float uTex;
+uniform vec2  uResolution;
+varying vec2 vUv;
+
+// fBm noise for tie-dye texture inside the orb
+float hash21(vec2 p){ return fract(sin(dot(p,vec2(127.1,311.7)))*43758.5453); }
+float noise2(vec2 p){
+  vec2 i=floor(p); vec2 f=fract(p); vec2 u=f*f*(3.-2.*f);
+  return mix(mix(hash21(i),hash21(i+vec2(1,0)),u.x),mix(hash21(i+vec2(0,1)),hash21(i+vec2(1,1)),u.x),u.y);
+}
+float fbm2(vec2 p){
+  float v=0.; float a=0.5;
+  for(int i=0;i<5;i++){ v+=a*noise2(p); p*=2.; a*=0.5; }
+  return v;
+}
+
+void main(){
+  float mr = min(uResolution.x, uResolution.y);
+  vec2 uv = (vUv * 2.0 - 1.0) * uResolution / mr;
+
+  float idlePulse = uIdle > 0.5 ? sin(uTime * 0.9) * 0.5 + 0.5 : 0.0;
+  // Dramatic bass expansion: cube root for wide dynamic range
+  float bassNorm = uIdle > 0.5 ? idlePulse * 0.05 : pow(uBass, 0.5) * 0.55;
+
+  // Fixed orb size with dramatic bass pulse
+  float baseR = 0.65;
+  float orbR = baseR + bassNorm;
+  float dist = length(uv);
+  float mask = smoothstep(orbR, orbR - 0.18, dist);
+  if(mask < 0.001){ gl_FragColor = vec4(0.0); return; }
+
+  // Tie-dye fBm texture inside orb
+  float spd2 = uIdle > 0.5 ? 0.12 : (uSpeed * 0.5 + uBass * 0.4 + uMid * 0.15);
+  vec2 p = uv * 2.2;
+  float dtime = uTime * 0.065 * spd2;
+  p.x -= dtime;
+  float n1 = fbm2(p * 0.9 + vec2(dtime*0.45, 0.0));
+  float n2 = fbm2(p * 1.4 - vec2(0.0, dtime*0.25));
+  float n3 = fbm2(p * 2.0 + n1);
+  p.y += sin(p.x*2.3 + n1*4.5)*0.28;
+  p.x += cos(p.y*2.1 + n2*4.0)*0.22;
+  float bands = sin(p.x*2.1 + p.y*1.1 + n1*4.2 + n2*2.2 + n3*0.8);
+  float dye = smoothstep(0.08, 0.92, 0.5 + 0.5*bands + fbm2(p*1.1+dtime)*0.18);
+
+  // 6 vivid contrasting color palettes (TEX 0-5)
+  // 0 RAINBOW: violet→cyan→yellow
+  vec3 col1 = vec3(0.5,0.0,1.0);
+  vec3 col2 = vec3(0.0,0.9,0.9);
+  vec3 col3 = vec3(1.0,0.95,0.0);
+  if(uTex < 1.5){
+    // 1 FIRE: deep red→orange→white-hot
+    col1=vec3(0.6,0.0,0.0); col2=vec3(1.0,0.3,0.0); col3=vec3(1.0,0.9,0.5);
+  } else if(uTex < 2.5){
+    // 2 OCEAN: deep navy→teal→ice
+    col1=vec3(0.0,0.05,0.4); col2=vec3(0.0,0.6,0.7); col3=vec3(0.7,1.0,1.0);
+  } else if(uTex < 3.5){
+    // 3 NEON: black→hot pink→lime
+    col1=vec3(0.1,0.0,0.15); col2=vec3(1.0,0.0,0.6); col3=vec3(0.3,1.0,0.0);
+  } else if(uTex < 4.5){
+    // 4 COSMIC: black→deep purple→gold
+    col1=vec3(0.05,0.0,0.15); col2=vec3(0.5,0.0,0.9); col3=vec3(1.0,0.8,0.1);
+  } else if(uTex < 5.5){
+    // 5 EMBER: black→crimson→bright orange
+    col1=vec3(0.05,0.0,0.0); col2=vec3(0.8,0.05,0.05); col3=vec3(1.0,0.55,0.1);
+  } else {
+    // 6 UV: near-black navy→electric cyan+cobalt→hot magenta
+    col1=vec3(0.02,0.0,0.08); col2=vec3(0.48,0.0,0.9); col3=vec3(1.0,0.0,0.65);
+  }
+
+  // Tie-dye color blend with audio shift
+  float audioLift = uIdle > 0.5 ? idlePulse * 0.2 : uBass * 0.7 + uMid * 0.3 + uHigh * 0.15;
+  float colorShift = audioLift * 0.45 + sin(uTime * 0.08) * 0.05;
+  float t2 = fract(dye + colorShift);
+  vec3 col;
+  if(t2 < 0.33)      col = mix(col1, col2, t2 * 3.0);
+  else if(t2 < 0.66) col = mix(col2, col3, (t2 - 0.33) * 3.0);
+  else               col = mix(col3, col1, (t2 - 0.66) * 3.0);
+
+  // Audio brightness: dramatic range
+  col = pow(col, vec3(0.78));
+  col *= 0.85 + audioLift * 1.6;
+  col = clamp(col, 0.0, 1.0);
+
+  // Specular
+  float spec = smoothstep(0.32, 0.0, length(uv - vec2(-0.22, 0.26))) * 0.5;
+  col = clamp(col + spec, 0.0, 1.0);
+
+  // Glow halo
+  float glowDist = smoothstep(orbR + 0.55, orbR + 0.02, dist);
+  float haloMask = glowDist * (1.0 - mask);
+  vec3 haloCol = col2 * (0.3 + audioLift * 0.5);
+
+  vec3 finalCol = col * mask + haloCol * haloMask;
+  float finalAlpha = mask + haloMask * 0.65;
+  gl_FragColor = vec4(finalCol, clamp(finalAlpha, 0.0, 1.0));
+}`;
+
+// ══════════════════════════════════════════════════════════════════
+// 2. METAL SPHERE — Codrops DistortedSphere technique
+//    Periodic pnoise + twist. vDistort drives PBR-style shading.
+//    uNoiseStrength driven violently by audio.
+// ══════════════════════════════════════════════════════════════════
+var METAL_VS = `
+attribute vec3 aPos;
+attribute vec3 aNorm;
+uniform float uTime,uSpeed,uNoiseDensity,uNoiseStrength,uFrequency,uAmplitude;
+uniform mat4  uMVP;
+varying float vDistort;
+varying vec3  vWorldNorm;
+varying vec3  vViewPos;
+varying vec3  vWorldPos;
+
+vec3 pm3(vec3 x){return x-floor(x*(1./289.))*289.;}
+vec4 pm4(vec4 x){return x-floor(x*(1./289.))*289.;}
+vec4 ppm(vec4 x){return pm4(((x*34.)+1.)*x);}
+vec4 pts(vec4 r){return 1.79284291-0.85373472*r;}
+float pnoise(vec3 P,vec3 rep){
+  vec3 Pi0=mod(floor(P),rep),Pi1=mod(Pi0+1.,rep);
+  Pi0=pm3(Pi0);Pi1=pm3(Pi1);
+  vec3 Pf0=fract(P),Pf1=Pf0-1.;
+  vec4 ix=vec4(Pi0.x,Pi1.x,Pi0.x,Pi1.x),iy=vec4(Pi0.yy,Pi1.yy);
+  vec4 ixy=ppm(ppm(ix)+iy);
+  vec4 ixy0=ppm(ixy+Pi0.zzzz),ixy1=ppm(ixy+Pi1.zzzz);
+  vec4 gx0=ixy0/7.,gy0=fract(floor(gx0)/7.)-.5;gx0=fract(gx0);
+  vec4 gz0=vec4(.5)-abs(gx0)-abs(gy0);vec4 sz0=step(gz0,vec4(0.));
+  gx0-=sz0*(step(0.,gx0)-.5);gy0-=sz0*(step(0.,gy0)-.5);
+  vec4 gx1=ixy1/7.,gy1=fract(floor(gx1)/7.)-.5;gx1=fract(gx1);
+  vec4 gz1=vec4(.5)-abs(gx1)-abs(gy1);vec4 sz1=step(gz1,vec4(0.));
+  gx1-=sz1*(step(0.,gx1)-.5);gy1-=sz1*(step(0.,gy1)-.5);
+  vec3 g000=vec3(gx0.x,gy0.x,gz0.x),g100=vec3(gx0.y,gy0.y,gz0.y);
+  vec3 g010=vec3(gx0.z,gy0.z,gz0.z),g110=vec3(gx0.w,gy0.w,gz0.w);
+  vec3 g001=vec3(gx1.x,gy1.x,gz1.x),g101=vec3(gx1.y,gy1.y,gz1.y);
+  vec3 g011=vec3(gx1.z,gy1.z,gz1.z),g111=vec3(gx1.w,gy1.w,gz1.w);
+  vec4 n0=pts(vec4(dot(g000,g000),dot(g010,g010),dot(g100,g100),dot(g110,g110)));
+  g000*=n0.x;g010*=n0.y;g100*=n0.z;g110*=n0.w;
+  vec4 n1=pts(vec4(dot(g001,g001),dot(g011,g011),dot(g101,g101),dot(g111,g111)));
+  g001*=n1.x;g011*=n1.y;g101*=n1.z;g111*=n1.w;
+  vec3 fv=Pf0*Pf0*Pf0*(Pf0*(Pf0*6.-15.)+10.);
+  vec4 nz=mix(vec4(dot(g000,Pf0),dot(g100,vec3(Pf1.x,Pf0.yz)),dot(g010,vec3(Pf0.x,Pf1.y,Pf0.z)),dot(g110,vec3(Pf1.xy,Pf0.z))),
+              vec4(dot(g001,vec3(Pf0.xy,Pf1.z)),dot(g101,vec3(Pf1.x,Pf0.y,Pf1.z)),dot(g011,vec3(Pf0.x,Pf1.yz)),dot(g111,Pf1)),fv.z);
+  vec2 ny=mix(nz.xy,nz.zw,fv.y);
+  return 2.2*mix(ny.x,ny.y,fv.x);
+}
+vec3 rotY(vec3 v,float a){float c=cos(a),s=sin(a);return vec3(c*v.x+s*v.z,v.y,-s*v.x+c*v.z);}
+
+void main(){
+  float t=uTime*uSpeed;
+  float distortion=pnoise((aNorm+t)*uNoiseDensity,vec3(10.)*uNoiseDensity)*uNoiseStrength;
+  float angle=sin(aPos.y*uFrequency+t)*uAmplitude;
+  vec3 pos=aPos+aNorm*distortion;
+  pos=rotY(pos,angle);
+  vDistort=distortion;
+  // Pass world-space position and normal for env reflection in FS
+  vWorldPos=pos;
+  vWorldNorm=normalize(aNorm+vec3(distortion)*0.15); // perturbed normal
+  // View-space position for Fresnel
+  vViewPos=vec3(0.,0.,14.)-pos;
+  gl_Position=uMVP*vec4(pos,1.);
+}`;
+
+var METAL_FS = `
+precision highp float;
+uniform float uTime,uBass,uMid,uHigh,uIdle,uNoiseStrength,uRoughness,uMetalness;
+uniform int uMetalType;
+varying float vDistort;
+varying vec3  vWorldNorm;
+varying vec3  vViewPos;
+varying vec3  vWorldPos;
+#define PI 3.14159265358979
+
+vec3 pal(float t, vec3 a, vec3 b, vec3 c, vec3 d){
+  return a + b*cos(6.28318*(c*t+d));
+}
+float sat(float x){return clamp(x,0.0,1.0);}
+
+void main(){
+  float bass=uIdle>.5?.03:uBass;
+  float mid =uIdle>.5?.02:uMid;
+  float high=uIdle>.5?.02:uHigh;
+
+  vec3 N = normalize(vWorldNorm);
+  vec3 V = normalize(vViewPos);
+  float NdV = max(dot(N,V),0.001);
+  float fresnel = pow(1.0 - NdV, 3.0);
+  float d = sat(vDistort / max(uNoiseStrength,0.001) * 0.5 + 0.5);
+
+  vec3 L1 = normalize(vec3(-1.0,1.4,1.2));
+  vec3 L2 = normalize(vec3(1.3,.45,.65));
+  vec3 L3 = normalize(vec3(.0,.35,-1.0));
+
+  float key = pow(max(dot(reflect(-V,N), L1),0.0), mix(90.0,18.0,uRoughness));
+  float fill = pow(max(dot(reflect(-V,N), L2),0.0), mix(45.0,10.0,uRoughness));
+  float rimLight = pow(max(dot(reflect(-V,N), L3),0.0), 8.0);
+
+  // Per-type vivid palettes: 0=glass/prism, 1=fire, 2=electric, 3=prism, 4=neon, 5=violet/rainbow
+  float rt = vWorldPos.y*.22+vWorldPos.x*.14+vDistort*4.0+uTime*.20;
+  vec3 albedo = vec3(.88,.92,1.0);  // type 0: CHROME glass
+
+  if(uMetalType==1){
+    // FIRE: deep orange-red core → yellow-white hot tip
+    float ft = sat(vDistort*3.+.5+bass*2.);
+    albedo = mix(vec3(0.7,0.05,0.0), mix(vec3(1.0,0.38,0.0),vec3(1.0,0.95,0.3),ft*ft), ft);
+  }
+  else if(uMetalType==2){
+    // ELECTRIC: neon purple → electric green
+    float et = sat(sin(rt*4.+uTime*.4)*.5+.5+vDistort*2.);
+    albedo = mix(vec3(0.5,0.0,1.0), vec3(0.1,1.0,0.2), et);
+  }
+  else if(uMetalType==3){
+    // PRISM: glass iridescence — white core, rainbow edge
+    float pt2 = sat(length(N.xy)*.8+vDistort*2.);
+    albedo = pal(pt2+rt*.3, vec3(.85,.88,1.0), vec3(.12,.10,.12), vec3(1.0,1.0,1.0), vec3(0.,.33,.67));
+    albedo = mix(vec3(.9,.95,1.0), albedo, pt2*.8+.2);
+  }
+  else if(uMetalType==4){
+    // NEON: dark base with UV cyan-magenta glow
+    float nt = sat(vDistort*3.+bass*3.+.3);
+    albedo = mix(vec3(0.01,0.0,0.04), mix(vec3(0.0,0.85,0.8),vec3(0.9,0.0,0.6),sin(rt*3.)*.5+.5), nt);
+  }
+  else if(uMetalType==5){
+    // VIOLET: deep purple → pink → cobalt
+    albedo = pal(rt, vec3(.55,.0,.7), vec3(.45,.3,.3), vec3(1.0,.8,1.0), vec3(.0,.15,.4));
+  }
+
+  // metal lighting, kept intentionally simple to avoid shader compatibility problems
+  vec3 envTop = mix(vec3(.08,.10,.16), vec3(.68,.82,1.0), sat(N.y*.5+.5));
+  vec3 envWarm = vec3(1.0,.58,.28) * pow(max(dot(reflect(-V,N), normalize(vec3(-.8,.2,1.0))),0.0), 22.0);
+  vec3 spec = vec3(1.0) * key * (1.1 + uMetalness);
+  spec += vec3(.45,.65,1.0) * fill * .65;
+  spec += vec3(.7,.85,1.0) * rimLight * .35;
+
+  vec3 col = albedo * (envTop*.45 + .18) + spec + envWarm*.35;
+  col += albedo * fresnel * (.35 + uMetalness*.45);
+  col += vec3(1.0,.42,.08) * bass * bass * .35;
+  col += vec3(.65,.75,1.0) * high * .16;
+  col = mix(col, col + pal(d + uTime*.05, vec3(.35), vec3(.25), vec3(1.0), vec3(.0,.33,.67)), (mid+high)*.12);
+
+  if(uMetalType==4){
+    col *= .55;
+    col += vec3(.08,.10,.16)*fresnel;
+  }
+
+  col *= .72;
+  col = (col*(2.51*col+.03))/(col*(2.43*col+.59)+.14);
+  col = pow(max(col,vec3(0.0)),vec3(1.0/2.2));
+  gl_FragColor=vec4(col,1.0);
+}`;
+
+// ── Compile programs ───────────────────────────────────────────────
+var orbProg   = makeProgram(ORB_VS,   ORB_FS);
+var metalProg = makeProgram(METAL_VS, METAL_FS);
+var irisProg  = makeProgram(IRIS_VS,  IRIS_FS);
+
+// Fullscreen triangle (covers NDC [-1,1] with a single triangle)
+var irisTriBuf = mkBuf(new Float32Array([-1,-1, 3,-1, -1,3]), gl.ARRAY_BUFFER);
+if(!orbProg || !metalProg){
+  console.error('Visualizer shader program failed. Falling back to 2D OSC mode.');
+  setTimeout(function(){ setMode('osc'); }, 0);
+}
+
+// ── Geometry: icosahedron sphere ───────────────────────────────────
+function buildSphere(subdivs) {
+  var t=(1+Math.sqrt(5))/2;
+  var v=[[-1,t,0],[1,t,0],[-1,-t,0],[1,-t,0],[0,-1,t],[0,1,t],[0,-1,-t],[0,1,-t],[t,0,-1],[t,0,1],[-t,0,-1],[-t,0,1]];
+  var f=[[0,11,5],[0,5,1],[0,1,7],[0,7,10],[0,10,11],[1,5,9],[5,11,4],[11,10,2],[10,7,6],[7,1,8],[3,9,4],[3,4,2],[3,2,6],[3,6,8],[3,8,9],[4,9,5],[2,4,11],[6,2,10],[8,6,7],[9,8,1]];
+  function norm(x){var l=Math.sqrt(x[0]*x[0]+x[1]*x[1]+x[2]*x[2]);return[x[0]/l,x[1]/l,x[2]/l];}
+  v=v.map(norm);
+  for(var s=0;s<subdivs;s++){
+    var nf=[],mc={};
+    function mid(a,b){var k=Math.min(a,b)+','+Math.max(a,b);if(mc[k]!==undefined)return mc[k];var va=v[a],vb=v[b];mc[k]=v.length;v.push(norm([(va[0]+vb[0])/2,(va[1]+vb[1])/2,(va[2]+vb[2])/2]));return v.length-1;}
+    f.forEach(function(x){var a=mid(x[0],x[1]),b=mid(x[1],x[2]),c=mid(x[2],x[0]);nf.push([x[0],a,c],[x[1],b,a],[x[2],c,b],[a,b,c]);});
+    f=nf;
+  }
+  var pos=[],nor=[],tri=[],wire=[];
+  f.forEach(function(x){
+    var base=pos.length/3;
+    for(var i=0;i<3;i++){var vi=v[x[i]];pos.push(vi[0]*4,vi[1]*4,vi[2]*4);nor.push(vi[0],vi[1],vi[2]);}
+    tri.push(base,base+1,base+2);
+    wire.push(base,base+1,base+1,base+2,base+2,base);
+  });
+  return{pos:new Float32Array(pos),nor:new Float32Array(nor),tri:new Uint16Array(tri),wire:new Uint16Array(wire)};
+}
+var geo=buildSphere(3);
+
+function mkBuf(data, target) {
+  var b=gl.createBuffer();
+  gl.bindBuffer(target,b);
+  gl.bufferData(target,data,gl.STATIC_DRAW);
+  return b;
+}
+var posBuf  = mkBuf(geo.pos,  gl.ARRAY_BUFFER);
+var norBuf  = mkBuf(geo.nor,  gl.ARRAY_BUFFER);
+var triBuf  = mkBuf(geo.tri,  gl.ELEMENT_ARRAY_BUFFER);
+var wireBuf = mkBuf(geo.wire, gl.ELEMENT_ARRAY_BUFFER);
+var quadBuf = mkBuf(new Float32Array([0,0,1,0,0,1,1,1]), gl.ARRAY_BUFFER);
+
+// ── Cache uniform + attribute locations ───────────────────────────
+function ulocs(p, names) {
+  var o={};
+  if(!p) return o;
+  names.forEach(function(n){o[n]=gl.getUniformLocation(p,n);});
+  return o;
+}
+var oU = ulocs(orbProg,   ['uTime','uBass','uMid','uHigh','uFreq','uDetail','uSpeed','uIdle','uTex','uMVP']);
+var mU = ulocs(metalProg, ['uTime','uBass','uMid','uHigh','uIdle','uSpeed','uNoiseDensity','uNoiseStrength','uFrequency','uAmplitude','uRoughness','uMetalness','uMetalType','uMVP']);
+var iU = ulocs(irisProg,  ['uTime','uSpeed','uBass','uMid','uHigh','uIdle','uResolution','uTex']); // uTex is float now
+
+var oAPos=orbProg?gl.getAttribLocation(orbProg,'aPos'):-1,   oANorm=orbProg?gl.getAttribLocation(orbProg,'aNorm'):-1;
+var mAPos=metalProg?gl.getAttribLocation(metalProg,'aPos'):-1,  mANorm=metalProg?gl.getAttribLocation(metalProg,'aNorm'):-1;
+var iAPos=irisProg?gl.getAttribLocation(irisProg,'aPos'):-1;
+
+console.log('Locations — orb aPos:',oAPos,'aNorm:',oANorm,'| metal aPos:',mAPos,'aNorm:',mANorm);
+
+// ── Matrix math (column-major WebGL) ──────────────────────────────
+function m4mul(a,b){
+  var o=new Float32Array(16);
+  for(var col=0;col<4;col++)for(var row=0;row<4;row++){var s=0;for(var k=0;k<4;k++)s+=a[k*4+row]*b[col*4+k];o[col*4+row]=s;}
+  return o;
+}
+function mPersp(fov,asp,n,f){
+  var ff=1/Math.tan(fov*.5),nf=1/(n-f);
+  return new Float32Array([ff/asp,0,0,0, 0,ff,0,0, 0,0,(f+n)*nf,-1, 0,0,2*f*n*nf,0]);
+}
+function mView(ex,ey,ez){
+  var fx=-ex,fy=-ey,fz=-ez,fl=Math.sqrt(fx*fx+fy*fy+fz*fz);
+  if(fl<.0001)fl=.0001;fx/=fl;fy/=fl;fz/=fl;
+  var rx=fz,ry=0,rz=-fx,rl=Math.sqrt(rx*rx+rz*rz);
+  if(rl<.0001){rx=1;rz=0;}else{rx/=rl;rz/=rl;}
+  var ux=ry*fz-rz*fy,uy=rz*fx-rx*fz,uz=rx*fy-ry*fx;
+  return new Float32Array([rx,ux,-fx,0, ry,uy,-fy,0, rz,uz,-fz,0, -(rx*ex+ry*ey+rz*ez),-(ux*ex+uy*ey+uz*ez),(fx*ex+fy*ey+fz*ez),1]);
+}
+function mRotY(a){var c=Math.cos(a),s=Math.sin(a);return new Float32Array([c,0,-s,0, 0,1,0,0, s,0,c,0, 0,0,0,1]);}
+
+// ── Audio helpers ──────────────────────────────────────────────────
+function lerp(a,b,t){return a+(b-a)*t;}
+function band(arr,s,e){var sum=0;for(var i=s;i<e;i++)sum+=arr[i];return sum/((e-s)*255);}
+
+// ── UI visibility toggle ────────────────────────────────────────────
+var uiVisible = true;
+function toggleUIVisibility() {
+  uiVisible = !uiVisible;
+  ['ui','mic-wrap','wordmark','freq-wrap','mobile-text-color-btn'].forEach(function(id){
+    var el=document.getElementById(id);
+    if(el)el.classList.toggle('ui-hidden', !uiVisible);
+  });
+  var btn = document.getElementById('mobile-hide-btn');
+  if (btn) {
+    btn.textContent = uiVisible ? '⊙' : '◎';
+    btn.classList.toggle('ui-shown', uiVisible);
+    btn.setAttribute('aria-label', uiVisible ? 'Hide UI' : 'Show UI');
+  }
+}
+
+// ── Mobile hide button ──────────────────────────────────────────────
+(function(){
+  var btn = document.getElementById('mobile-hide-btn');
+  if (btn) btn.addEventListener('click', function(e){ e.stopPropagation(); toggleUIVisibility(); });
+})();
+
+
+// ── Mobile text-color toggle ────────────────────────────────────────
+(function(){
+  var isWhite = false; // default: black text
+  var tcBtn = document.getElementById('mobile-text-color-btn');
+  var fieldsEl = document.getElementById('center-fields');
+  if (!tcBtn) return;
+
+  function applyTextColor() {
+    if (fieldsEl) fieldsEl.style.color = isWhite ? '#ffffff' : '#000000';
+    tcBtn.classList.toggle('text-white', isWhite);
+    tcBtn.classList.toggle('text-black', !isWhite);
+    tcBtn.setAttribute('aria-label', isWhite ? 'Switch to black text' : 'Switch to white text');
+  }
+
+  applyTextColor(); // set initial state
+  tcBtn.addEventListener('click', function(e){
+    e.stopPropagation();
+    isWhite = !isWhite;
+    applyTextColor();
+  });
+})();
+
+}
+
+// ── Mouse ──────────────────────────────────────────────────────────
+var mx=0,my=0;
+var greyscale = false;
+function toggleGreyscale() {
+  greyscale = !greyscale;
+  document.body.style.filter = greyscale ? 'grayscale(1)' : '';
+}
+
+document.addEventListener('keydown',function(e){
+  var tag = (e.target && e.target.tagName) ? e.target.tagName.toLowerCase() : '';
+  if(tag==='input'||tag==='textarea'||tag==='select') return;
+
+  var key=(e.key||'').toLowerCase();
+
+  if(key==='l'){ toggleFieldsColor(); }
+  if(key==='k'){ toggleUIVisibility(); }
+  if(key==='j'){
+    fieldsVisible = !fieldsVisible;
+    var fields = document.getElementById('center-fields');
+    if (fields) fields.classList.toggle('fields-hidden', !fieldsVisible);
+  }
+  if(key==='h'){ toggleAutoVJ(); }
+  if(key==='g'){ toggleGreyscale(); }
+  if(key===' '&&MODE==='ripple'){e.preventDefault();fluid.triggerSplat(1.0);}
+
+  // Number keys 1-0 + numpad switch modes
+  var numModes=['ripple','bio','orb','metal','osc','fft','lissajous','retrowave','star','iris','pulse','tiedye'];
+  var numKey = null;
+  if(e.key>='1'&&e.key<='9') numKey = parseInt(e.key)-1;
+  if(e.key==='0') numKey = 9;
+  if(e.code==='Minus'||e.key==='-') numKey = 10;
+  if(e.code==='Equal'||e.key==='=') numKey = 11;
+  // Numpad support
+  if(e.code&&e.code.startsWith('Numpad')){
+    var n=parseInt(e.code.replace('Numpad',''));
+    if(!isNaN(n)){
+      if(n>=1&&n<=9) numKey=n-1;
+      if(n===0) numKey=9;
+    }
+  }
+  if(numKey!==null && numModes[numKey]){
+    e.preventDefault();
+    setMode(numModes[numKey]);
+  }
+});
+document.addEventListener('mousemove',function(e){mx=(e.clientX-window.innerWidth/2)/120;my=(e.clientY-window.innerHeight/2)/120;});
+
+// ── Resize ─────────────────────────────────────────────────────────
+window.addEventListener('resize',function(){
+  canvas.width=window.innerWidth;canvas.height=window.innerHeight;
+  gl.viewport(0,0,canvas.width,canvas.height);
+});
+
+// ── Helper: bind sphere geometry ──────────────────────────────────
+function bindSphereGeom(aPos, aNorm) {
+  gl.bindBuffer(gl.ARRAY_BUFFER, posBuf);
+  gl.enableVertexAttribArray(aPos);
+  gl.vertexAttribPointer(aPos, 3, gl.FLOAT, false, 0, 0);
+  gl.bindBuffer(gl.ARRAY_BUFFER, norBuf);
+  gl.enableVertexAttribArray(aNorm);
+  gl.vertexAttribPointer(aNorm, 3, gl.FLOAT, false, 0, 0);
+}
+
+// ── Helper: build MVP ─────────────────────────────────────────────
+function buildMVP(t) {
+  var aspect = canvas.width / canvas.height;
+  var proj = mPersp(0.75, aspect, 0.1, 100);
+  var camX = mx*0.5 + Math.sin(t*0.07)*0.3;
+  var camY = -my*0.5;
+  var view = mView(camX, camY-1.5, 14);
+  var rot  = mRotY(t*0.025 + sBass*0.06);
+  return m4mul(m4mul(proj, view), rot);
+}
+
+// ── RENDER LOOP ────────────────────────────────────────────────────
+var t0=performance.now(), frame=0;
+
+function animate(){
+  if(!APP_VISIBLE && document.hidden){ requestAnimationFrame(animate); return; }
+  requestAnimationFrame(animate);
+  var t=(performance.now()-t0)/1000;
+  frame++;
+
+  // Audio
+  if(analyser){
+    analyser.getByteFrequencyData(dataArray);
+    var bc=analyser.frequencyBinCount;
+  
+  // Mic gain is applied before the analyser through a Web Audio GainNode.
+    // 0.00x = nearly frozen/no audio reaction, 1.00x = default, 3.00x = highly reactive.
+    var bassIn = Math.min(1, band(dataArray,0,Math.floor(bc*.04)));
+    var midIn  = Math.min(1, band(dataArray,Math.floor(bc*.04),Math.floor(bc*.25)));
+    var highIn = Math.min(1, band(dataArray,Math.floor(bc*.25),Math.floor(bc*.75)));
+
+    sBass=lerp(sBass,bassIn,.13);
+    sMid =lerp(sMid, midIn,.10);
+    sHigh=lerp(sHigh,highIn,.10);
+
+    var raw=0;for(var i=0;i<bc;i++)raw+=dataArray[i];
+    var rawGain = Math.min(1, raw/(bc*255));
+    sFreq=lerp(sFreq,rawGain,.1);
+    if(frame%6===0)document.getElementById('freq-val').textContent=Math.round(raw/bc);
+  } else {
+    sBass=lerp(sBass,0,.05);sMid=lerp(sMid,0,.05);sHigh=lerp(sHigh,0,.05);sFreq=lerp(sFreq,0,.05);
+  }
+
+  var idle  = micActive?0:1;
+  var spd   = SPEED/10;
+  var bloom = BLOOM/10;
+  // Only run WebGL setup for GL modes (not 2D/bio/tiedye — saves ~5ms/frame)
+  var isGLMode = (MODE==='orb'||MODE==='metal'||MODE==='iris');
+  var mvp   = isGLMode ? buildMVP(t) : null;
+  if(isGLMode){
+    gl.viewport(0,0,canvas.width,canvas.height);
+    gl.clearColor(0,0,0,1);
+    gl.clear(gl.COLOR_BUFFER_BIT|gl.DEPTH_BUFFER_BIT);
+    gl.enable(gl.DEPTH_TEST);
+  }
+
+  // ── ORB BLOB ───────────────────────────────────────────────
   if(MODE==='lightning'){
     // Lightning — more unpredictable placement, tilt, branching, and strike origin.
     ctx.globalCompositeOperation='source-over';
@@ -1925,97 +2971,72 @@ if(MODE==='pleasures'){
   }
 
 if(MODE==='ascii'){
-    // ASCII — performant shader-style character field.
-    // Large cells + no per-character shadow = smooth in Framer.
-    // Size buttons control character scale. Default is LARGE.
+    // ASCII — restored character renderer.
+    // Draws real text glyphs, not just blocks/shapes.
     ctx.globalCompositeOperation='source-over';
-    ctx.fillStyle='rgba(0,0,0,0.34)';
+    ctx.fillStyle='rgba(0,0,0,0.28)';
     ctx.fillRect(0,0,w,h);
 
-    var minDim = Math.min(w,h);
-    var time = t * (0.38 + spd * 0.75 + high * 0.45);
-    var chars = shapeAmt < 0.33 ? ' .:-=+*#%@' : (shapeAmt < 0.66 ? ' .,:;irsXA253hMHGS#9B&@' : ' ▁▂▃▄▅▆▇█');
-    var sizeNorm = globalSize;
+    var sizeScale = (typeof getVisualSizeScale === 'function') ? getVisualSizeScale() : 1.0;
+    var shapeAmt = (typeof getVisualizerShape === 'function') ? getVisualizerShape() : 0.5;
+    var speedAmt = (typeof getGlobalSpeedScale === 'function') ? getGlobalSpeedScale() : 1.0;
 
-    // Higher SIZE = larger characters/fewer cells.
-    var cell = Math.max(12, Math.floor((IS_MOBILE ? 18 : 16) * sizeNorm * vizDpr));
+    var cell = Math.max(8, Math.floor((IS_MOBILE ? 13 : 11) * sizeScale * vizDpr));
     var cols = Math.ceil(w / cell);
     var rows = Math.ceil(h / cell);
 
+    var charsA = ' .:-=+*#%@';
+    var charsB = ' .,:;irsXA253hMHGS#9B&@';
+    var charsC = ' ·░▒▓█';
+    var chars = shapeAmt < 0.33 ? charsA : (shapeAmt < 0.66 ? charsB : charsC);
+
+    var time = t * (0.18 + speedAmt * 0.85);
+    var audioLevel = bass * 0.55 + mid * 0.30 + high * 0.15;
+
     ctx.save();
-    ctx.font = '900 ' + Math.floor(cell * 0.92) + 'px monospace';
     ctx.textAlign = 'center';
     ctx.textBaseline = 'middle';
-    ctx.globalCompositeOperation='lighter';
+    ctx.font = Math.max(8, Math.floor(cell * 0.92)) + 'px ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace';
+    ctx.globalCompositeOperation='screen';
 
-    // One subtle global glow instead of expensive per-glyph shadows.
-    var glow = ctx.createRadialGradient(cx, cy, minDim * 0.05, cx, cy, minDim * (0.62 + bass * 0.16));
-    glow.addColorStop(0.0, paletteColor((time * 0.08) % 1, 0.18 + bass * 0.12));
-    glow.addColorStop(0.55, paletteColor((time * 0.08 + 0.35) % 1, 0.08 + mid * 0.08));
-    glow.addColorStop(1.0, 'rgba(0,0,0,0)');
-    ctx.fillStyle = glow;
-    ctx.beginPath();
-    ctx.arc(cx, cy, minDim, 0, Math.PI * 2);
-    ctx.fill();
+    for(var y=0; y<rows; y++){
+      var py = y * cell + cell * 0.5;
+      var uy = (py / h - 0.5) * 2.0;
 
-    for(var gy=0; gy<rows; gy++){
-      var y = gy * cell + cell * 0.5;
-
-      for(var gx=0; gx<cols; gx++){
-        var x = gx * cell + cell * 0.5;
-
-        var ux = (x - cx) / minDim;
-        var uy = (y - cy) / minDim;
+      for(var x=0; x<cols; x++){
+        var px = x * cell + cell * 0.5;
+        var ux = (px / w - 0.5) * 2.0;
         var d = Math.sqrt(ux*ux + uy*uy);
-        var a = Math.atan2(uy, ux);
 
-        // Cheap shader-like signal: radial rings + diagonal scan + swirl.
-        var wave =
-          Math.sin(d * 24.0 - time * 2.6 + bass * 3.2) +
-          Math.sin((ux + uy) * 13.0 + time * 1.7) +
-          Math.cos(a * 4.0 - time * (0.25 + speedAmt * 2.4));
-
-        var v = 0.5 + 0.5 * Math.sin(wave);
-
-        // Cheap mic reaction: sample one FFT bin per column only.
+        var bin = Math.floor(Math.pow(x / Math.max(1, cols-1), 1.25) * ((dataArray && dataArray.length) ? dataArray.length - 1 : 255));
+        var fft = 0;
         if(micActive && dataArray && dataArray.length){
-          var bin = Math.floor((gx / Math.max(1, cols - 1)) * (dataArray.length - 1));
-          var av = dataArray[bin] / 255;
-          v = Math.max(v * 0.72, av);
+          fft = dataArray[Math.max(0, Math.min(dataArray.length-1, bin))] / 255;
         } else {
-          v = Math.max(v * 0.78, 0.22 + 0.18 * Math.sin(time + gx * 0.35));
+          fft = 0.18 + 0.13 * Math.sin(time * 1.4 + x * 0.19 + y * 0.07);
         }
 
-        // Edge fade makes it feel more like a shader object, less like text wallpaper.
-        var edgeFade = Math.max(0, 1.0 - d * 0.85);
-        v = Math.max(0, Math.min(1, v * (0.58 + edgeFade * 0.58) + bass * 0.18));
+        var wave =
+          Math.sin(d * (12.0 + shapeAmt * 18.0) - time * 2.2 + audioLevel * 2.0) * 0.35 +
+          Math.sin((ux + uy) * (7.0 + shapeAmt * 12.0) + time * 1.4) * 0.25 +
+          fft * 0.65;
 
-        var idx = Math.max(0, Math.min(chars.length - 1, Math.floor(v * (chars.length - 1))));
-        var ch = chars.charAt(idx);
+        var v = Math.max(0, Math.min(1, 0.42 + wave));
+        var ci = Math.max(0, Math.min(chars.length - 1, Math.floor(v * (chars.length - 1))));
+        var ch = chars.charAt(ci);
 
-        // Skip very dim cells for performance and better contrast.
-        if(idx < 1 && ((gx + gy) % 2 === 0)) continue;
-
-        ctx.fillStyle = paletteColor((v + d * 0.45 + time * 0.04) % 1, 0.18 + v * 0.68);
-        ctx.fillText(ch, x, y);
+        if(ch !== ' '){
+          var alpha = 0.22 + v * 0.72;
+          ctx.fillStyle = paletteColor((v + x/cols * 0.28 + time * 0.025) % 1, alpha);
+          ctx.fillText(ch, px, py);
+        }
       }
     }
 
-    // A few smooth scanlines for motion polish.
-    ctx.globalCompositeOperation='screen';
-    for(var s=0; s<4; s++){
-      var sy = (h * ((time * 0.06 + s * 0.25) % 1));
-      var grad = ctx.createLinearGradient(0, sy - cell * 2.0, 0, sy + cell * 2.0);
-      grad.addColorStop(0, 'rgba(0,0,0,0)');
-      grad.addColorStop(0.5, paletteColor((s / 4 + time * 0.08) % 1, 0.08 + high * 0.10));
-      grad.addColorStop(1, 'rgba(0,0,0,0)');
-      ctx.fillStyle = grad;
-      ctx.fillRect(0, sy - cell * 2.0, w, cell * 4.0);
-    }
-
     ctx.restore();
-    ctx.shadowBlur = 0;
   }
+
+
 
 if(MODE==='cube'){
     // Paper Heatmap-inspired cube mode.
@@ -2843,7 +3864,6 @@ var METAL_FS = `
 precision highp float;
 uniform float uTime,uBass,uMid,uHigh,uIdle,uNoiseStrength,uRoughness,uMetalness;
 uniform int uMetalType;
-uniform vec3 uPal0,uPal1,uPal2,uPal3,uPal4,uPal5,uPal6;
 varying float vDistort;
 varying vec3  vWorldNorm;
 varying vec3  vViewPos;
@@ -2854,27 +3874,6 @@ vec3 pal(float t, vec3 a, vec3 b, vec3 c, vec3 d){
   return a + b*cos(6.28318*(c*t+d));
 }
 float sat(float x){return clamp(x,0.0,1.0);}
-
-vec3 texPal(float t){
-  t = fract(t);
-  float x = t * 6.0;
-  float i = floor(x);
-  float f = smoothstep(0.0,1.0,fract(x));
-
-  if(i < 1.0) return mix(uPal0,uPal1,f);
-  if(i < 2.0) return mix(uPal1,uPal2,f);
-  if(i < 3.0) return mix(uPal2,uPal3,f);
-  if(i < 4.0) return mix(uPal3,uPal4,f);
-  if(i < 5.0) return mix(uPal4,uPal5,f);
-  return mix(uPal5,uPal6,f);
-}
-
-vec3 metallicPaletteColor(float t, float silverMix){
-  vec3 c = texPal(t);
-  float lum = dot(c, vec3(0.299,0.587,0.114));
-  vec3 silver = vec3(0.72 + lum*0.16, 0.74 + lum*0.13, 0.80 + lum*0.10);
-  return mix(c, silver, silverMix);
-}
 
 void main(){
   float bass=uIdle>.5?.03:uBass;
@@ -2895,78 +3894,48 @@ void main(){
   float fill = pow(max(dot(reflect(-V,N), L2),0.0), mix(45.0,10.0,uRoughness));
   float rimLight = pow(max(dot(reflect(-V,N), L3),0.0), 8.0);
 
-  // Texture-aware metal color.
-  // The selected global palette now drives the sphere distinctly.
-  float rt = vWorldPos.y*.22 + vWorldPos.x*.14 + vWorldPos.z*.10 + vDistort*3.25 + uTime*.085;
-  float paletteFlow = fract(rt + d*.34 + bass*.08);
+  // Per-type vivid palettes: 0=glass/prism, 1=fire, 2=electric, 3=prism, 4=neon, 5=violet/rainbow
+  float rt = vWorldPos.y*.22+vWorldPos.x*.14+vDistort*4.0+uTime*.20;
+  vec3 albedo = vec3(.88,.92,1.0);  // type 0: CHROME glass
 
-  vec3 palA = texPal(paletteFlow);
-  vec3 palB = texPal(paletteFlow + .18 + fresnel*.08);
-  vec3 palC = texPal(paletteFlow + .48 + mid*.06);
-
-  // Chrome-first base, but palette-tinted enough that each texture reads clearly.
-  vec3 albedo = metallicPaletteColor(paletteFlow, 0.38);
-  albedo = mix(albedo, palB, .22 + fresnel*.28);
-  albedo = mix(albedo, palC, sat(vDistort*1.4 + .25) * .18);
-
-  // Make specific palette families feel extra distinct without relying on old material presets.
   if(uMetalType==1){
-    // FIRE behavior: hotter cores.
-    albedo = mix(albedo, texPal(.78 + d*.18), .32 + bass*.20);
+    // FIRE: deep orange-red core → yellow-white hot tip
+    float ft = sat(vDistort*3.+.5+bass*2.);
+    albedo = mix(vec3(0.7,0.05,0.0), mix(vec3(1.0,0.38,0.0),vec3(1.0,0.95,0.3),ft*ft), ft);
   }
   else if(uMetalType==2){
-    // ELECTRIC behavior: sharper green/cyan highlights.
-    albedo = mix(albedo, texPal(.42 + sin(rt*3.0)*.12), .30 + high*.20);
+    // ELECTRIC: neon purple → electric green
+    float et = sat(sin(rt*4.+uTime*.4)*.5+.5+vDistort*2.);
+    albedo = mix(vec3(0.5,0.0,1.0), vec3(0.1,1.0,0.2), et);
   }
   else if(uMetalType==3){
-    // PRISM behavior: cleaner glassy spectral shifts.
-    albedo = mix(metallicPaletteColor(paletteFlow + fresnel*.25, .22), albedo, .42);
+    // PRISM: glass iridescence — white core, rainbow edge
+    float pt2 = sat(length(N.xy)*.8+vDistort*2.);
+    albedo = pal(pt2+rt*.3, vec3(.85,.88,1.0), vec3(.12,.10,.12), vec3(1.0,1.0,1.0), vec3(0.,.33,.67));
+    albedo = mix(vec3(.9,.95,1.0), albedo, pt2*.8+.2);
   }
   else if(uMetalType==4){
-    // NEON/UV behavior: darker base, louder edges.
-    albedo = mix(albedo * .55, texPal(paletteFlow + .33), fresnel*.55 + high*.12);
+    // NEON: dark base with UV cyan-magenta glow
+    float nt = sat(vDistort*3.+bass*3.+.3);
+    albedo = mix(vec3(0.01,0.0,0.04), mix(vec3(0.0,0.85,0.8),vec3(0.9,0.0,0.6),sin(rt*3.)*.5+.5), nt);
   }
   else if(uMetalType==5){
-    // IRIDESCENT RAINBOW METAL:
-    // Full spectral sweep across the sphere with oil-slick chrome behavior.
-    float rainbowFlow =
-      vWorldPos.y * .42 +
-      vWorldPos.x * .24 +
-      d * .55 +
-      fresnel * .95 +
-      uTime * (.045 + uSpeed * .03);
-
-    vec3 rainbowA = texPal(rainbowFlow);
-    vec3 rainbowB = texPal(rainbowFlow + .18 + fresnel * .22);
-    vec3 rainbowC = texPal(rainbowFlow + .52);
-
-    // Strong spectral layering.
-    albedo = mix(rainbowA, rainbowB, fresnel * .75);
-    albedo = mix(albedo, rainbowC, sat(vDistort * 1.8) * .45);
-
-    // Chrome iridescence.
-    vec3 chrome = vec3(.82,.84,.92);
-    albedo = mix(chrome, albedo, .82);
-
-    // Strong edge-spectrum highlights.
-    albedo += rainbowB * pow(fresnel, 2.4) * 1.15;
-
-    // Thin-film interference style shimmer.
-    albedo += texPal(rainbowFlow + sin(uTime*.12 + d*9.0)*.08) * .18;
+    // VIOLET: deep purple → pink → cobalt
+    albedo = pal(rt, vec3(.55,.0,.7), vec3(.45,.3,.3), vec3(1.0,.8,1.0), vec3(.0,.15,.4));
   }
 
   // metal lighting, kept intentionally simple to avoid shader compatibility problems
   vec3 envTop = mix(vec3(.08,.10,.16), vec3(.68,.82,1.0), sat(N.y*.5+.5));
-  vec3 envWarm = texPal(.12 + paletteFlow*.2) * pow(max(dot(reflect(-V,N), normalize(vec3(-.8,.2,1.0))),0.0), 22.0);
+  vec3 envWarm = vec3(1.0,.58,.28) * pow(max(dot(reflect(-V,N), normalize(vec3(-.8,.2,1.0))),0.0), 22.0);
   vec3 spec = vec3(1.0) * key * (1.1 + uMetalness);
-  spec += texPal(paletteFlow + .35 + fresnel*.25) * fill * 1.05;
-  spec += texPal(paletteFlow + .62 + fresnel*.15) * rimLight * .78;
+  spec += vec3(.45,.65,1.0) * fill * .65;
+  spec += vec3(.7,.85,1.0) * rimLight * .35;
 
   vec3 col = albedo * (envTop*.45 + .18) + spec + envWarm*.35;
   col += albedo * fresnel * (.35 + uMetalness*.45);
-  col += texPal(.10 + paletteFlow*.12) * bass * bass * .35;
-  col += texPal(.55 + paletteFlow*.2) * high * .16;
-  col = mix(col, col + texPal(d + uTime*.035), (mid+high)*.14);
+  col += vec3(1.0,.42,.08) * bass * bass * .35;
+  col += vec3(.65,.75,1.0) * high * .16;
+  col = mix(col, col + pal(d + uTime*.05, vec3(.35), vec3(.25), vec3(1.0), vec3(.0,.33,.67)), (mid+high)*.12);
 
   if(uMetalType==4){
     col *= .55;
@@ -3554,23 +4523,15 @@ function animate(){
     mFreqSm = lerp(mFreqSm, sFreq, 0.03);
 
     gl.useProgram(metalProg);
-    // Metal visibility guard: restore sane WebGL state before drawing sphere.
-    gl.bindFramebuffer(gl.FRAMEBUFFER, null);
-    gl.viewport(0,0,canvas.width,canvas.height);
-    gl.disable(gl.BLEND);
-    gl.enable(gl.DEPTH_TEST);
-    gl.depthMask(true);
-    gl.disable(gl.CULL_FACE);
-    gl.clear(gl.DEPTH_BUFFER_BIT);
     bindSphereGeom(mAPos, mANorm);
     gl.uniformMatrix4fv(mU.uMVP,false,mvp);
     gl.uniform1f(mU.uTime,t);
     gl.uniform1f(mU.uBass,mBassSm); gl.uniform1f(mU.uMid,mMidSm); gl.uniform1f(mU.uHigh,mHighSm);
     gl.uniform1f(mU.uIdle,idle);
-    gl.uniform1f(mU.uSpeed,(0.03 + spd * 1.45) * getGlobalSpeedScale() + mBassSm*.08);
+    gl.uniform1f(mU.uSpeed,spd+mBassSm*.15);
 
     // Noise density from M_NOISE slider
-    var density = M_NOISE * (1.0 + getVisualizerShape()*1.25);
+    var density = M_NOISE * 1.5;
     // Base strength from M_DISP, audio violence on top
     var baseStr = M_DISP;
     var violence = micActive ? mBassSm*0.75+mMidSm*0.28+mHighSm*0.10 : 0;
@@ -3583,16 +4544,6 @@ function animate(){
     gl.uniform1f(mU.uRoughness,     M_ROUGH);
     gl.uniform1f(mU.uMetalness,     M_METAL);
     gl.uniform1i(mU.uMetalType,M_TYPE);
-
-    // Send selected texture palette directly into metal sphere shader.
-    var metalPalette = (typeof currentPalette === 'function') ? currentPalette() : PALETTES[TEXTURE_KEYS[TEX]];
-    if (metalPalette && mU.uPal0 !== null && mU.uPal0 !== undefined) {
-      for (var pi = 0; pi < 7; pi++) {
-        var pc = metalPalette[Math.min(pi, metalPalette.length - 1)];
-        gl.uniform3f(mU['uPal' + pi], pc[0] / 255, pc[1] / 255, pc[2] / 255);
-      }
-    }
-
 
     // Always draw solid triangles for metal (looks better)
     gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER,triBuf);

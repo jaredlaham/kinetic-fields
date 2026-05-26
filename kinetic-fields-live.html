@@ -756,9 +756,9 @@ var micGainNode = null;
 function setMode(m) {
   MODE = m;
 
-  var twoDModes = ['osc','fft','lissajous','retrowave','star','pulse','lightning','ascii'];
+  var twoDModes = ['joy','osc','fft','lissajous','retrowave','star','pulse','lightning','ascii'];
   var isLiquidMetalShader = m === 'liquidmetal';
-  var isJoyShader = m === 'joy';
+  var isJoyShader = false; // Joy is intentionally handled by the 2D visualizer path, informed by the Pleasures mode.
   var is2D = twoDModes.indexOf(m) !== -1;
 
   var modeButtonIds = {
@@ -824,10 +824,7 @@ function setMode(m) {
   }
 
   if (joyModeCanvas) {
-    joyModeCanvas.style.display = isJoyShader ? 'block' : 'none';
-    if (isJoyShader) {
-      resizeJoyShader();
-    }
+    joyModeCanvas.style.display = 'none';
   }
 
   if (viz2DCanvas) {
@@ -2151,50 +2148,104 @@ if(MODE==='lightning'){
     ctx.shadowBlur = 0;
   }
 
-
   if(MODE==='joy'){
-    // JOY — fast Unknown Pleasures-style signal landscape.
-    // Heavy ridge construction is cached to an atlas; each frame only fades + draws one bitmap.
-    var nowMs = performance.now();
-    if(nowMs - joyLastDrawMs < joyTargetFrameMs) return;
-    joyLastDrawMs = nowMs;
-
-    ctx.globalCompositeOperation='source-over';
-    ctx.fillStyle='rgba(0,0,0,0.28)';
-    ctx.fillRect(0,0,w,h);
-
-    var minDim = Math.min(w,h);
-    var time = t * (0.20 + spd * 0.55);
-    var lines = IS_MOBILE ? 44 : 64;
-    var points = IS_MOBILE ? 64 : 96;
-    var cache = ensureJoyCache(w,h,lines,points);
-    var frameIdx = Math.floor(time * (IS_MOBILE ? 7 : 10)) % cache.frameCount;
-    var frame = getJoyFrame(cache, frameIdx);
-    warmJoyCache(cache, frameIdx + 1);
-
-    if(frame){
-      // Live audio still affects scale/energy, but avoids per-point audio sampling.
-      var pulse = 1.0 + bass * 0.018 + mid * 0.007;
-      var ox = (w - w*pulse) * 0.5;
-      var oy = (h - h*pulse) * 0.5 - bass * minDim * 0.012;
+      // Unknown Pleasures / Joy Division-inspired ridge visualizer.
+      // Inspired by Pouria's WebGL experiment, but implemented as a fast Canvas 2D mode.
+      ctx.globalCompositeOperation='source-over';
+      ctx.fillStyle='rgba(0,0,0,0.34)';
+      ctx.fillRect(0,0,w,h);
+  
+      var sizeScale = (typeof getVisualSizeScale === 'function') ? getVisualSizeScale() : 1.0;
+      var shapeAmt = (typeof getVisualizerShape === 'function') ? getVisualizerShape() : 0.5;
+      var speedAmt = (typeof getGlobalSpeedScale === 'function') ? getGlobalSpeedScale() : 1.0;
+  
+      var lines = Math.floor((IS_MOBILE ? 34 : 46) / Math.max(0.78, sizeScale * 0.62));
+      lines = Math.max(22, Math.min(58, lines));
+  
+      var samples = IS_MOBILE ? 96 : 150;
+      var marginX = w * 0.13;
+      var plotW = w - marginX * 2.0;
+      var top = h * 0.16;
+      var bottom = h * 0.86;
+      var rowGap = (bottom - top) / lines;
+      var time = t * (0.08 + spd * 0.42 * speedAmt);
+      var audioLevel = bass * 0.52 + mid * 0.32 + high * 0.16;
+  
       ctx.save();
-      ctx.globalAlpha = 0.94 + high * 0.06;
-      ctx.drawImage(frame, ox, oy, w*pulse, h*pulse);
-      ctx.restore();
-
-      // A single cheap glow wash keeps the live, reactive feel without per-line shadow cost.
-      if(high > 0.03 || bass > 0.03){
-        ctx.save();
-        ctx.globalCompositeOperation='screen';
-        var g = ctx.createRadialGradient(cx, cy, minDim*0.08, cx, cy, minDim*(0.56 + bass*0.12));
-        g.addColorStop(0, paletteColor((time*0.025 + 0.62) % 1, 0.035 + high*0.035));
-        g.addColorStop(1, 'rgba(0,0,0,0)');
-        ctx.fillStyle = g;
-        ctx.fillRect(0,0,w,h);
-        ctx.restore();
+      ctx.lineCap='round';
+      ctx.lineJoin='round';
+  
+      for(var li=0; li<lines; li++){
+        var yBase = top + li * rowGap;
+        var depth = li / Math.max(1, lines - 1);
+        var ampBase = rowGap * (1.35 + sizeScale * 0.25);
+        var centerBoost = Math.sin(depth * Math.PI);
+        var amp = ampBase * (0.75 + centerBoost * (2.2 + shapeAmt * 1.5) + audioLevel * 1.35);
+  
+        var points = [];
+  
+        for(var si=0; si<=samples; si++){
+          var p = si / samples;
+          var x = marginX + p * plotW;
+          var nx = (p - 0.5) * 2.0;
+  
+          var g1 = Math.exp(-Math.pow(nx * (2.25 - shapeAmt * 0.55), 2.0));
+          var g2 = Math.exp(-Math.pow((nx - 0.18) * 4.2, 2.0)) * 0.45;
+          var g3 = Math.exp(-Math.pow((nx + 0.23) * 5.0, 2.0)) * 0.34;
+          var mound = g1 + g2 + g3;
+  
+          var fft = 0;
+          if(micActive && dataArray && dataArray.length){
+            var bin = Math.floor(Math.pow(p, 1.65) * (dataArray.length - 1));
+            fft = dataArray[Math.max(0, Math.min(dataArray.length-1, bin))] / 255;
+          } else {
+            fft = 0.16 + 0.12 * Math.sin(time * 1.6 + p * 11.0 + li * 0.43);
+          }
+  
+          var ripple =
+            Math.sin(p * Math.PI * (8.0 + shapeAmt * 10.0) + li * 0.31 - time * (0.35 + speedAmt * 3.2)) * 0.12 +
+            Math.sin(p * Math.PI * (17.0 + shapeAmt * 7.0) - time * (0.25 + speedAmt * 2.4) + li * 0.67) * 0.055;
+  
+          var jag = (fft * 0.55 + audioLevel * 0.18) * (0.55 + mound * 1.35);
+          var y = yBase - amp * (mound * (0.33 + jag) + ripple * (0.45 + fft));
+          points.push([x,y]);
+        }
+  
+        ctx.beginPath();
+        ctx.moveTo(marginX, h + 10);
+        for(var pi=0; pi<points.length; pi++) ctx.lineTo(points[pi][0], points[pi][1]);
+        ctx.lineTo(marginX + plotW, h + 10);
+        ctx.closePath();
+        ctx.fillStyle = 'rgba(0,0,0,0.92)';
+        ctx.fill();
+  
+        var alpha = 0.42 + depth * 0.46;
+        ctx.strokeStyle = TEX === 0 ? 'rgba(255,255,255,' + alpha + ')' : paletteColor((depth + time * 0.02) % 1, alpha);
+        ctx.lineWidth = Math.max(1, (1.05 + sizeScale * 0.22) * vizDpr);
+  
+        ctx.beginPath();
+        for(var pj=0; pj<points.length; pj++){
+          if(pj===0) ctx.moveTo(points[pj][0], points[pj][1]);
+          else ctx.lineTo(points[pj][0], points[pj][1]);
+        }
+        ctx.stroke();
       }
+  
+      ctx.globalCompositeOperation='overlay';
+      var grains = IS_MOBILE ? 280 : 520;
+      var seed = Math.floor(t * 18.0);
+      for(var g=0; g<grains; g++){
+        var rn = Math.sin((g*12.9898 + seed*78.233)*0.017)*43758.5453;
+        rn = rn - Math.floor(rn);
+        var rn2 = Math.sin((g*91.113 + seed*17.77)*0.013)*24634.6345;
+        rn2 = rn2 - Math.floor(rn2);
+        var ga = (Math.sin(g*1.7 + seed)*0.5+0.5)*0.05;
+        ctx.fillStyle = g % 2 === 0 ? 'rgba(255,255,255,'+ga+')' : 'rgba(0,0,0,'+(ga*0.9)+')';
+        ctx.fillRect(rn*w, rn2*h, IS_MOBILE ? 2 : 1.25, IS_MOBILE ? 2 : 1.25);
+      }
+  
+      ctx.restore();
     }
-  }
 
 if(MODE==='pulse'){
     // Paper Heatmap-inspired cube mode.
@@ -3480,11 +3531,7 @@ function animate(){
   if(MODE==='liquidmetal'){
     drawLiquidMetalShader(t, spd, sBass, sMid, sHigh, sFreq);
   }
-  if(MODE==='joy'){
-    try { drawJoyShader(t, spd, sBass, sMid, sHigh, sFreq); }
-    catch(e) { console.warn('Joy shader draw error:', e); }
-  }
-  if(['osc','fft','dots','lissajous','retrowave','star','pulse','lightning','ascii'].indexOf(MODE)!==-1){
+  if(['joy','osc','fft','dots','lissajous','retrowave','star','pulse','lightning','ascii'].indexOf(MODE)!==-1){
     drawExtraVisualizer(t, spd, bloom);
   }
 

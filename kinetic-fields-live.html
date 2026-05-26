@@ -755,8 +755,9 @@ var micGainNode = null;
 function setMode(m) {
   MODE = m;
 
-  var twoDModes = ['osc','fft','lissajous','retrowave','star','pulse','lightning','ascii','joy'];
+  var twoDModes = ['osc','fft','lissajous','retrowave','star','pulse','lightning','ascii'];
   var isLiquidMetalShader = m === 'liquidmetal';
+  var isJoyShader = m === 'joy';
   var is2D = twoDModes.indexOf(m) !== -1;
 
   var modeButtonIds = {
@@ -808,15 +809,18 @@ function setMode(m) {
   if (chaosRow) chaosRow.style.display = m === 'lissajous' ? '' : 'none';
 
   if (texRow) texRow.style.display = '';
-  if (shapeLbl) shapeLbl.textContent = m === 'metal' ? 'MATERIAL' : (is2D ? 'VISUALIZER' : 'SHAPE');
+  if (shapeLbl) shapeLbl.textContent = m === 'metal' ? 'MATERIAL' : ((is2D || isJoyShader) ? 'VISUALIZER' : 'SHAPE');
 
   // iris/bio/tiedye use their own canvas — hide glc for those + 2D/shader modes
-  if (glCanvas) glCanvas.style.display = (is2D || isLiquidMetalShader || m === 'bio' || m === 'tiedye') ? 'none' : 'block';
+  if (glCanvas) glCanvas.style.display = (is2D || isLiquidMetalShader || isJoyShader || m === 'bio' || m === 'tiedye') ? 'none' : 'block';
 
   if (vizCanvas) {
-    vizCanvas.style.display = isLiquidMetalShader ? 'block' : 'none';
+    vizCanvas.style.display = (isLiquidMetalShader || isJoyShader) ? 'block' : 'none';
     if (isLiquidMetalShader) {
       resizeLiquidMetalShader();
+    }
+    if (isJoyShader) {
+      resizeJoyShader();
     }
   }
 
@@ -1545,6 +1549,167 @@ function drawLiquidMetalShader(t, spd, bass, mid, high, freq){
   lmGl.uniform1f(lmGl.getUniformLocation(lmProgram,'u_speed'),spd||0.7);
   lmGl.uniform1i(lmGl.getUniformLocation(lmProgram,'u_tex'),TEX||0);
   lmGl.drawArrays(lmGl.TRIANGLES,0,6);
+}
+
+
+// ═══════════════════════════════════════════════════════════════════
+// JOY WEBGL SHADER — Unknown Pleasures/Joy Division-style moving ridges
+// Rebuilt from scratch as one fullscreen GPU pass. No canvas paths, no
+// cached 2D atlas, no per-line CPU drawing. Music drives ridge amplitude,
+// drift, glow, and subtle vertical pulse.
+// ═══════════════════════════════════════════════════════════════════
+var joyCanvas=null, joyGl=null, joyProgram=null, joyQuad=null, joyW=1, joyH=1, joyDpr=1;
+function initJoyShader(){
+  joyCanvas = document.getElementById('viz-canvas');
+  if(!joyCanvas) return false;
+  if(joyGl && joyProgram) return true;
+
+  joyGl = joyCanvas.getContext('webgl', {alpha:true, antialias:false, depth:false, stencil:false, premultipliedAlpha:false}) ||
+          joyCanvas.getContext('experimental-webgl', {alpha:true, antialias:false, depth:false, stencil:false, premultipliedAlpha:false});
+  if(!joyGl){ console.warn('Joy shader: WebGL unavailable'); return false; }
+
+  var vs = [
+    'attribute vec2 a_pos;',
+    'varying vec2 v_uv;',
+    'void main(){',
+    '  v_uv = a_pos * 0.5 + 0.5;',
+    '  gl_Position = vec4(a_pos, 0.0, 1.0);',
+    '}'
+  ].join('\n');
+
+  var fs = [
+    'precision mediump float;',
+    'varying vec2 v_uv;',
+    'uniform vec2 u_resolution;',
+    'uniform float u_time;',
+    'uniform float u_bass;',
+    'uniform float u_mid;',
+    'uniform float u_high;',
+    'uniform float u_speed;',
+    'uniform int u_tex;',
+    '#define MAX_LINES 58',
+    '',
+    'float hash(float n){ return fract(sin(n) * 43758.5453123); }',
+    'vec3 pal(float t){',
+    '  if(u_tex==1) return mix(vec3(1.0,0.22,0.04), vec3(1.0,0.78,0.18), smoothstep(0.0,1.0,t));',
+    '  if(u_tex==2) return mix(vec3(0.18,0.86,1.0), vec3(0.78,1.0,0.18), smoothstep(0.0,1.0,t));',
+    '  if(u_tex==3) return mix(vec3(0.70,0.86,1.0), vec3(1.0,0.58,0.38), smoothstep(0.0,1.0,t));',
+    '  if(u_tex==4) return mix(vec3(0.00,1.0,0.68), vec3(1.0,0.24,0.86), smoothstep(0.0,1.0,t));',
+    '  if(u_tex==5) return mix(vec3(0.58,0.08,1.0), vec3(0.0,0.88,1.0), smoothstep(0.0,1.0,t));',
+    '  if(u_tex==6) return mix(vec3(0.92,0.78,0.48), vec3(0.90,0.28,0.12), smoothstep(0.0,1.0,t));',
+    '  return mix(vec3(0.72,0.90,1.0), vec3(1.0,1.0,1.0), smoothstep(0.0,1.0,t));',
+    '}',
+    'float ridgeShape(float x, float row, float tm){',
+    '  float n = 0.0;',
+    '  for(int k=0;k<4;k++){',
+    '    float fk = float(k);',
+    '    float seed = row * 17.13 + fk * 31.71;',
+    '    float active = step(fk, 1.8 + floor(hash(row*9.1) * 2.2));',
+    '    float mu = 0.50 + (hash(seed)-0.5)*0.26 + sin(tm*(0.52+fk*0.13)+seed)*0.045;',
+    '    float sig = 0.020 + hash(seed+4.7)*0.035;',
+    '    float z = (x - mu) / sig;',
+    '    n += active * exp(-0.5*z*z) * (0.54 + hash(seed+8.3)*0.72);',
+    '  }',
+    '  n += sin(x*44.0 + row*0.47 + tm*2.1) * 0.018;',
+    '  n += sin(x*91.0 + row*1.23 - tm*1.6) * 0.007;',
+    '  return max(0.0, n);',
+    '}',
+    'void main(){',
+    '  vec2 uv = v_uv;',
+    '  float aspect = u_resolution.x / max(1.0,u_resolution.y);',
+    '  float tm = u_time * (0.55 + u_speed*0.20);',
+    '  float audio = clamp(u_bass*0.85 + u_mid*0.35 + u_high*0.20, 0.0, 1.5);',
+    '  float lines = 52.0;',
+    '  float xMin = 0.15;',
+    '  float xMax = 0.85;',
+    '  float yMin = 0.18;',
+    '  float yMax = 0.82;',
+    '  float x = (uv.x - xMin) / (xMax - xMin);',
+    '  float aa = fwidth(uv.y) * 1.8;',
+    '  float stroke = 0.0018 + aa + u_high*0.0009;',
+    '  float ink = 0.0;',
+    '  float glow = 0.0;',
+    '  float rowTint = 0.0;',
+    '  if(x >= -0.02 && x <= 1.02){',
+    '    for(int i=0;i<MAX_LINES;i++){',
+    '      float fi = float(i);',
+    '      if(fi >= lines) break;',
+    '      float rn = fi / (lines - 1.0);',
+    '      float baseY = mix(yMin, yMax, rn);',
+    '      float amp = 0.058 + rn*0.105;',
+    '      float centerMask = smoothstep(0.02,0.20,x) * (1.0-smoothstep(0.80,0.98,x));',
+    '      float shape = ridgeShape(x, fi, tm) * centerMask;',
+    '      float y = baseY - shape * amp * (0.72 + audio*0.62 + rn*0.28);',
+    '      y -= sin(tm*1.35 + rn*8.0) * u_bass * 0.006;',
+    '      float d = abs(uv.y - y);',
+    '      float line = 1.0 - smoothstep(stroke, stroke + aa*2.0, d);',
+    '      float halo = 1.0 - smoothstep(stroke*1.4, stroke*10.0 + u_bass*0.008, d);',
+    '      ink = max(ink, line);',
+    '      glow = max(glow, halo * (0.16 + rn*0.16));',
+    '      rowTint = max(rowTint, line * rn);',
+    '    }',
+    '  }',
+    '  vec3 bg = vec3(0.0);',
+    '  vec3 lineCol = pal(rowTint + tm*0.018);',
+    '  vec3 col = bg;',
+    '  col += lineCol * glow * (0.22 + u_high*0.38);',
+    '  col = mix(col, lineCol, ink * (0.82 + u_high*0.18));',
+    '  float vignette = smoothstep(0.96,0.18,length((uv-0.5)*vec2(aspect,1.0)));',
+    '  col *= 0.72 + vignette*0.45;',
+    '  gl_FragColor = vec4(col, 1.0);',
+    '}'
+  ].join('\n');
+
+  function compile(type, src){
+    var sh = joyGl.createShader(type);
+    joyGl.shaderSource(sh, src);
+    joyGl.compileShader(sh);
+    if(!joyGl.getShaderParameter(sh, joyGl.COMPILE_STATUS)) throw new Error('Joy shader compile: ' + joyGl.getShaderInfoLog(sh));
+    return sh;
+  }
+  joyProgram = joyGl.createProgram();
+  joyGl.attachShader(joyProgram, compile(joyGl.VERTEX_SHADER, vs));
+  joyGl.attachShader(joyProgram, compile(joyGl.FRAGMENT_SHADER, fs));
+  joyGl.linkProgram(joyProgram);
+  if(!joyGl.getProgramParameter(joyProgram, joyGl.LINK_STATUS)) throw new Error('Joy shader link: ' + joyGl.getProgramInfoLog(joyProgram));
+
+  joyQuad = joyGl.createBuffer();
+  joyGl.bindBuffer(joyGl.ARRAY_BUFFER, joyQuad);
+  joyGl.bufferData(joyGl.ARRAY_BUFFER, new Float32Array([-1,-1, 1,-1, -1,1, -1,1, 1,-1, 1,1]), joyGl.STATIC_DRAW);
+  joyGl.disable(joyGl.DEPTH_TEST);
+  joyGl.disable(joyGl.CULL_FACE);
+  return true;
+}
+function resizeJoyShader(){
+  joyCanvas = document.getElementById('viz-canvas');
+  if(!joyCanvas) return;
+  // Joy is now GPU-bound, so keep enough resolution for crisp lines while avoiding retina overkill.
+  joyDpr = Math.min(window.devicePixelRatio||1, IS_MOBILE ? 1.0 : 1.25);
+  joyW = Math.max(1, Math.floor(window.innerWidth * joyDpr));
+  joyH = Math.max(1, Math.floor(window.innerHeight * joyDpr));
+  if(joyCanvas.width !== joyW || joyCanvas.height !== joyH){
+    joyCanvas.width = joyW;
+    joyCanvas.height = joyH;
+  }
+  if(joyGl) joyGl.viewport(0,0,joyW,joyH);
+}
+function drawJoyShader(t, spd, bass, mid, high, freq){
+  if(!initJoyShader()) return;
+  resizeJoyShader();
+  joyGl.useProgram(joyProgram);
+  joyGl.bindBuffer(joyGl.ARRAY_BUFFER, joyQuad);
+  var a = joyGl.getAttribLocation(joyProgram,'a_pos');
+  joyGl.enableVertexAttribArray(a);
+  joyGl.vertexAttribPointer(a,2,joyGl.FLOAT,false,0,0);
+  joyGl.viewport(0,0,joyW,joyH);
+  joyGl.uniform2f(joyGl.getUniformLocation(joyProgram,'u_resolution'),joyW,joyH);
+  joyGl.uniform1f(joyGl.getUniformLocation(joyProgram,'u_time'),t);
+  joyGl.uniform1f(joyGl.getUniformLocation(joyProgram,'u_bass'),bass||0);
+  joyGl.uniform1f(joyGl.getUniformLocation(joyProgram,'u_mid'),mid||0);
+  joyGl.uniform1f(joyGl.getUniformLocation(joyProgram,'u_high'),high||0);
+  joyGl.uniform1f(joyGl.getUniformLocation(joyProgram,'u_speed'),spd||0.7);
+  joyGl.uniform1i(joyGl.getUniformLocation(joyProgram,'u_tex'),TEX||0);
+  joyGl.drawArrays(joyGl.TRIANGLES,0,6);
 }
 
 
@@ -3397,7 +3562,10 @@ function animate(){
   if(MODE==='liquidmetal'){
     drawLiquidMetalShader(t, spd, sBass, sMid, sHigh, sFreq);
   }
-  if(['osc','fft','dots','lissajous','retrowave','star','pulse','lightning','ascii','joy'].indexOf(MODE)!==-1){
+  if(MODE==='joy'){
+    drawJoyShader(t, spd, sBass, sMid, sHigh, sFreq);
+  }
+  if(['osc','fft','dots','lissajous','retrowave','star','pulse','lightning','ascii'].indexOf(MODE)!==-1){
     drawExtraVisualizer(t, spd, bloom);
   }
 

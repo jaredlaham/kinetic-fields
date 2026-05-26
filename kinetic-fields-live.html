@@ -1520,14 +1520,17 @@ function drawLiquidMetalShader(t, spd, bass, mid, high, freq){
 }
 
 
-// JOY cache: precomputed seeds + reusable point buffers.
-// Keeps the Unknown Pleasures look while avoiding duplicate gaussian loops per line.
-var joyCache = { w:0, h:0, lines:0, points:0, rows:null, ybuf:null };
+// JOY cache: precomputed seeds + frame atlas.
+// The previous Joy renderer recalculated gaussian ridges and rebuilt 150+ paths every RAF.
+// This version preserves the Unknown Pleasures look, but renders heavy ridge geometry once
+// into a small rolling frame cache; live frames become cheap drawImage calls.
+var joyCache = { w:0, h:0, lines:0, points:0, tex:-1, rows:null, frames:null, built:0, frameCount:0 };
 var joyLastDrawMs = 0;
-var joyTargetFrameMs = IS_MOBILE ? 50 : 33;
+var joyTargetFrameMs = IS_MOBILE ? 33 : 16;
 function ensureJoyCache(w,h,lines,points){
-  if(joyCache.w===w && joyCache.h===h && joyCache.lines===lines && joyCache.points===points && joyCache.rows) return joyCache;
-  joyCache = { w:w, h:h, lines:lines, points:points, rows:[], ybuf:[] };
+  var frameCount = IS_MOBILE ? 12 : 18;
+  if(joyCache.w===w && joyCache.h===h && joyCache.lines===lines && joyCache.points===points && joyCache.tex===(TEX||0) && joyCache.rows && joyCache.frames) return joyCache;
+  joyCache = { w:w, h:h, lines:lines, points:points, tex:(TEX||0), rows:[], frames:[], built:0, frameCount:frameCount };
   for(var li=0; li<lines; li++){
     var peaks = 2 + ((li * 17) % 3);
     var row = { peaks: peaks, seed: [], sinSeed: [], sigmaBase: [] };
@@ -1538,9 +1541,100 @@ function ensureJoyCache(w,h,lines,points){
       row.sigmaBase.push(0.025 + 0.020 * (0.5 + 0.5 * Math.sin(seed * 1.7)));
     }
     joyCache.rows.push(row);
-    joyCache.ybuf.push(new Float32Array(points + 1));
   }
   return joyCache;
+}
+function makeJoyCanvas(w,h){
+  var c = document.createElement('canvas');
+  c.width = w; c.height = h;
+  return c;
+}
+function buildJoyFrame(cache, frameIndex){
+  var w=cache.w, h=cache.h, lines=cache.lines, points=cache.points;
+  var c = makeJoyCanvas(w,h);
+  var jctx = c.getContext('2d', { alpha:true });
+  if(!jctx) return null;
+
+  var minDim = Math.min(w,h);
+  var phase = (frameIndex / Math.max(1, cache.frameCount)) * Math.PI * 2;
+  var xMin = w * 0.16, xMax = w * 0.84;
+  var yMin = h * 0.18, yMax = h * 0.82;
+  var dx = (xMax - xMin) / points;
+  var dy = (yMax - yMin) / lines;
+  var amp = minDim * 0.145;
+  var center = (xMin + xMax) * 0.5;
+  var ybuf = new Float32Array(points + 1);
+
+  jctx.clearRect(0,0,w,h);
+  jctx.lineCap='round';
+  jctx.lineJoin='round';
+  jctx.lineWidth = Math.max(1, 1.05 * vizDpr);
+  jctx.shadowBlur = Math.max(0.5, 2.2 * vizDpr) * paletteGlowStrength();
+  jctx.shadowColor = paletteColor((phase*0.025 + 0.62) % 1, 0.42);
+
+  // Draw back-to-front so the black fill masks ridges exactly like Joy Division/Unknown Pleasures.
+  for(var li=0; li<lines; li++){
+    var yBase = yMin + li * dy;
+    var rowNorm = li / Math.max(1, lines - 1);
+    var rowData = cache.rows[li];
+    var prevY = yBase;
+
+    for(var pi=0; pi<=points; pi++){
+      var x = xMin + pi * dx;
+      var xn = pi / points;
+      var noise = 0;
+
+      for(var pk=0; pk<rowData.peaks; pk++){
+        var seed = rowData.seed[pk];
+        var drift = Math.sin(phase * (0.9 + pk*0.22) + seed) * minDim * 0.045;
+        var mu = center + rowData.sinSeed[pk] * minDim * 0.11 + drift;
+        var sigma = minDim * rowData.sigmaBase[pk];
+        var z = (x - mu) / sigma;
+        noise += Math.exp(-0.5 * z * z) * (0.55 + 0.45 * Math.sin(seed + phase));
+      }
+
+      var tremor = Math.sin(xn * 42 + li * 0.37 + phase * 2.2) * minDim * 0.0035;
+      var ghostAudio = (0.19 + 0.11*Math.sin(xn*10.0 + phase*1.7) + 0.07*Math.sin(li*0.22 + phase*2.4));
+      var yy = yBase - noise * amp * (0.45 + rowNorm * 0.95) + tremor - ghostAudio * amp * 0.12 * rowNorm;
+      ybuf[pi] = prevY * 0.28 + yy * 0.72;
+      prevY = ybuf[pi];
+    }
+
+    jctx.beginPath();
+    jctx.moveTo(xMin, yMax + dy * 2);
+    for(var fi=0; fi<=points; fi++) jctx.lineTo(xMin + fi * dx, ybuf[fi]);
+    jctx.lineTo(xMax, yMax + dy * 2);
+    jctx.closePath();
+    jctx.fillStyle='rgba(0,0,0,0.88)';
+    jctx.fill();
+
+    jctx.beginPath();
+    for(var si=0; si<=points; si++){
+      var sx = xMin + si * dx;
+      if(si===0) jctx.moveTo(sx,ybuf[si]); else jctx.lineTo(sx,ybuf[si]);
+    }
+    jctx.strokeStyle = paletteColor((rowNorm * 0.16 + phase * 0.018 + 0.88) % 1, 0.64);
+    jctx.stroke();
+  }
+  jctx.shadowBlur = 0;
+  return c;
+}
+function getJoyFrame(cache, frameIndex){
+  frameIndex = frameIndex % cache.frameCount;
+  if(cache.frames[frameIndex]) return cache.frames[frameIndex];
+  var built = buildJoyFrame(cache, frameIndex);
+  cache.frames[frameIndex] = built;
+  cache.built++;
+  return built;
+}
+function warmJoyCache(cache, startIndex){
+  // Build at most one extra atlas frame per visual frame so interaction stays responsive.
+  if(cache.built >= cache.frameCount) return;
+  var idx = startIndex % cache.frameCount;
+  for(var tries=0; tries<cache.frameCount; tries++){
+    var n = (idx + tries) % cache.frameCount;
+    if(!cache.frames[n]){ cache.frames[n] = buildJoyFrame(cache, n); cache.built++; return; }
+  }
 }
 
 function drawExtraVisualizer(t, spd, bloom){
@@ -1948,82 +2042,47 @@ if(MODE==='lightning'){
 
 
   if(MODE==='joy'){
-    // JOY — Unknown Pleasures-style signal landscape.
-    // Performance: lower backing-store DPR + capped redraw cadence. The canvas stays live,
-    // but we avoid wasting cycles drawing nearly identical ridge fields every RAF.
+    // JOY — fast Unknown Pleasures-style signal landscape.
+    // Heavy ridge construction is cached to an atlas; each frame only fades + draws one bitmap.
     var nowMs = performance.now();
     if(nowMs - joyLastDrawMs < joyTargetFrameMs) return;
     joyLastDrawMs = nowMs;
+
     ctx.globalCompositeOperation='source-over';
-    ctx.fillStyle='rgba(0,0,0,0.30)';
+    ctx.fillStyle='rgba(0,0,0,0.28)';
     ctx.fillRect(0,0,w,h);
 
     var minDim = Math.min(w,h);
     var time = t * (0.20 + spd * 0.55);
-    var lines = IS_MOBILE ? 54 : 78;
-    var points = IS_MOBILE ? 84 : 128;
-    var xMin = w * 0.16;
-    var xMax = w * 0.84;
-    var yMin = h * 0.18;
-    var yMax = h * 0.82;
-    var dx = (xMax - xMin) / points;
-    var dy = (yMax - yMin) / lines;
-    var amp = minDim * (0.115 + bass * 0.16 + mid * 0.045);
-    var center = (xMin + xMax) * 0.5;
+    var lines = IS_MOBILE ? 44 : 64;
+    var points = IS_MOBILE ? 64 : 96;
     var cache = ensureJoyCache(w,h,lines,points);
+    var frameIdx = Math.floor(time * (IS_MOBILE ? 7 : 10)) % cache.frameCount;
+    var frame = getJoyFrame(cache, frameIdx);
+    warmJoyCache(cache, frameIdx + 1);
 
-    ctx.lineCap='round';
-    ctx.lineJoin='round';
-    ctx.lineWidth = Math.max(1, 1.12 * vizDpr);
-    ctx.shadowBlur = (2 + high * 11) * vizDpr * paletteGlowStrength();
-    ctx.shadowColor = paletteColor((time*0.04 + 0.62) % 1, 0.45);
+    if(frame){
+      // Live audio still affects scale/energy, but avoids per-point audio sampling.
+      var pulse = 1.0 + bass * 0.018 + mid * 0.007;
+      var ox = (w - w*pulse) * 0.5;
+      var oy = (h - h*pulse) * 0.5 - bass * minDim * 0.012;
+      ctx.save();
+      ctx.globalAlpha = 0.94 + high * 0.06;
+      ctx.drawImage(frame, ox, oy, w*pulse, h*pulse);
+      ctx.restore();
 
-    for(var li=0; li<lines; li++){
-      var yBase = yMin + li * dy;
-      var rowNorm = li / Math.max(1, lines - 1);
-      var rowData = cache.rows[li];
-      var ybuf = cache.ybuf[li];
-      var prevY = yBase;
-
-      for(var pi=0; pi<=points; pi++){
-        var x = xMin + pi * dx;
-        var xn = pi / points;
-        var noise = 0;
-
-        for(var pk=0; pk<rowData.peaks; pk++){
-          var seed = rowData.seed[pk];
-          var drift = Math.sin(time * (0.55 + pk*0.13) + seed) * minDim * 0.045;
-          var mu = center + rowData.sinSeed[pk] * minDim * 0.11 + drift;
-          var sigma = minDim * rowData.sigmaBase[pk];
-          var z = (x - mu) / sigma;
-          noise += Math.exp(-0.5 * z * z) * (0.55 + 0.45 * Math.sin(seed + time));
-        }
-
-        var tremor = Math.sin(xn * 42 + li * 0.37 + time * 3.1) * minDim * 0.0035;
-        var yy = yBase - noise * amp * (0.45 + rowNorm * 0.95) + tremor - audioByte(Math.floor(xn * 160)) * amp * 0.12 * rowNorm;
-        ybuf[pi] = prevY * 0.28 + yy * 0.72;
-        prevY = ybuf[pi];
+      // A single cheap glow wash keeps the live, reactive feel without per-line shadow cost.
+      if(high > 0.03 || bass > 0.03){
+        ctx.save();
+        ctx.globalCompositeOperation='screen';
+        var g = ctx.createRadialGradient(cx, cy, minDim*0.08, cx, cy, minDim*(0.56 + bass*0.12));
+        g.addColorStop(0, paletteColor((time*0.025 + 0.62) % 1, 0.035 + high*0.035));
+        g.addColorStop(1, 'rgba(0,0,0,0)');
+        ctx.fillStyle = g;
+        ctx.fillRect(0,0,w,h);
+        ctx.restore();
       }
-
-      // Black under-fill gives the classic non-overlapping 3D ridge feel.
-      ctx.beginPath();
-      ctx.moveTo(xMin, yMax + dy * 2);
-      for(var fi=0; fi<=points; fi++) ctx.lineTo(xMin + fi * dx, ybuf[fi]);
-      ctx.lineTo(xMax, yMax + dy * 2);
-      ctx.closePath();
-      ctx.fillStyle='rgba(0,0,0,0.86)';
-      ctx.fill();
-
-      ctx.beginPath();
-      for(var si=0; si<=points; si++){
-        var sx = xMin + si * dx;
-        if(si===0) ctx.moveTo(sx,ybuf[si]); else ctx.lineTo(sx,ybuf[si]);
-      }
-      ctx.strokeStyle = paletteColor((rowNorm * 0.16 + time * 0.025 + 0.88) % 1, 0.62 + high * 0.22);
-      ctx.stroke();
     }
-
-    ctx.shadowBlur = 0;
   }
 
 if(MODE==='pulse'){

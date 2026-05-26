@@ -513,14 +513,14 @@ body::after { content: ''; position: fixed; inset: 0; pointer-events: none; z-in
     <div class="vd" id="liquid-shape-div"></div>
     <div class="sg"><span>SPEED</span><input type="range" id="speedSl" min="1" max="10" value="3" step="1"></div>
     <div class="vd"></div>
-    <span class="row-lbl">SIZE</span>
+    <span id="visual-size-ctrls" style="display:none;align-items:center;gap:4px"><span class="row-lbl">SIZE</span>
     <button class="t" id="sizeSmallBtn" onclick="setVisualSize('small')">SMALL</button>
     <div class="vd"></div>
     <button class="t" id="sizeMediumBtn" onclick="setVisualSize('medium')">MEDIUM</button>
     <div class="vd"></div>
     <button class="t" id="sizeLargeBtn" onclick="setVisualSize('large')">LARGE</button>
     <div class="vd"></div>
-    <button class="t on" id="size3xBtn" onclick="setVisualSize('3x')">3XL</button>
+    <button class="t on" id="size3xBtn" onclick="setVisualSize('3x')">3XL</button></span>
   </div>
 
   <!-- Bio pixel size row -->
@@ -822,6 +822,9 @@ function setMode(m) {
 
   if (texRow) texRow.style.display = '';
   if (shapeLbl) shapeLbl.textContent = m === 'metal' ? 'MATERIAL' : (is2D ? 'VISUALIZER' : 'SHAPE');
+
+  var visualSizeCtrls = document.getElementById('visual-size-ctrls');
+  if (visualSizeCtrls) visualSizeCtrls.style.display = (m === 'liquidmetal' || m === 'ascii') ? 'inline-flex' : 'none';
 
   // iris/bio/tiedye use their own canvas — hide glc for those + 2D modes
   if (glCanvas) glCanvas.style.display = (is2D || m === 'bio' || m === 'tiedye' || m === 'liquidmetal') ? 'none' : 'block';
@@ -1427,6 +1430,10 @@ function hsl(h,s,l,a){
 
 
 function getVisualSizeScale(){
+  // Size control only applies to ASCII and Liquid Metal.
+  // Every other mode receives neutral scale so visuals are not changed.
+  if (typeof MODE !== 'undefined' && MODE !== 'ascii' && MODE !== 'liquidmetal') return 1.0;
+
   var mode = (typeof VISUAL_SIZE_MODE !== 'undefined') ? VISUAL_SIZE_MODE : 'medium';
   if(mode === 'small') return 0.70;
   if(mode === 'medium') return 1.00;

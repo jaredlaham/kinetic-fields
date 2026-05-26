@@ -947,27 +947,22 @@ function setTex(n) {
     }
   }
 
-  // Keep Fluid aligned with the global texture index:
-  // 0 Rainbow, 1 Fire, 2 Electric, 3 Prism, 4 Neon, 5 UV, 6 Vintage.
-  if (typeof liquidMetalGLMode !== 'undefined' && liquidMetalGLMode.resetPalette) liquidMetalGLMode.resetPalette();
-
+  // ── Ripple: map TEX → fluid color preset ─────────────────────────
+  var fluidMap = ['auto','cosmic','haxiomic','plasma','acid','plasma','haxiomic'];
   if (typeof fluid !== 'undefined' && fluid && fluid.setColor) {
-    fluid.setColor(TEX);
-    ['rainbow','fire','electric','prism','neon','uv','vintage'].forEach(function(nm,i){
+    fluid.setColor(fluidMap[n]);
+    ['auto','cosmic','haxiomic','plasma','acid','mono'].forEach(function(nm,i){
       var fc = document.getElementById('fc'+i);
-      if (fc) fc.classList.toggle('on', i === TEX);
+      if (fc) fc.classList.toggle('on', nm === fluidMap[n]);
     });
   }
 }
 
 function setFluidColor(m){
-  var map={rainbow:0,fire:1,electric:2,prism:3,neon:4,uv:5,vintage:6,auto:0,haxiomic:2,cosmic:3,acid:4,mono:6};
-  var idx = typeof m === 'number' ? m : (map[m] !== undefined ? map[m] : 0);
-  TEX = Math.max(0, Math.min(6, idx));
-  fluid.setColor(TEX);
-  ['rainbow','fire','electric','prism','neon','uv','vintage'].forEach(function(n,i){
+  fluid.setColor(m);
+  ['auto','cosmic','haxiomic','plasma','acid','mono'].forEach(function(n,i){
     var el=document.getElementById('fc'+i);
-    if(el)el.classList.toggle('on',i===TEX);
+    if(el)el.classList.toggle('on',n===m);
   });
 }
 
@@ -1054,7 +1049,7 @@ var fluid = (function(){
   var fAutoBaseHue=Math.random()*360;
   var fAutoTargetHue=Math.random()*360;
   var fAutoLastSwitch=-999999;
-  var fAutoModes=['cosmic','haxiomic','acid','mono'];
+  var fAutoModes=['cosmic','haxiomic','plasma','acid','mono'];
 
   var PARTICLE_VS=[
     'attribute vec2 a_position;','attribute vec4 a_color;','attribute float a_size;',
@@ -1150,7 +1145,7 @@ var fluid = (function(){
     }
     else if(m==='haxiomic')hue=205+seed*95+fbass*70;
     else if(m==='ice')hue=178+seed*42+fhighs*30;
-    else if(m==='cosmic')hue=275+seed*110+fmids*80;
+    else if(m==='plasma')hue=275+seed*110+fmids*80;
     else if(m==='acid')hue=80+seed*70+fhighs*60;
     else hue=205+seed*105+fbass*85+fmids*65+t*0.008;
 

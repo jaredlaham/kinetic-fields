@@ -1553,111 +1553,93 @@ function drawLiquidMetalShader(t, spd, bass, mid, high, freq){
 
 
 // ═══════════════════════════════════════════════════════════════════
-// JOY WEBGL SHADER — Unknown Pleasures/Joy Division-style moving ridges
-// Rebuilt from scratch as one fullscreen GPU pass. No canvas paths, no
-// cached 2D atlas, no per-line CPU drawing. Music drives ridge amplitude,
-// drift, glow, and subtle vertical pulse.
+// JOY WEBGL MODE — Pouria Unknown Pleasures-inspired line mesh
+// Uses a real WebGL line field instead of fragment-loop ray drawing.
+// This mirrors the reference's approach: many horizontal line meshes whose
+// vertex positions are displaced by layered noise, with music driving the
+// central wave amplitude. The GPU transforms ~7k vertices/frame and the
+// fragment shader is trivial, so it stays snappy.
 // ═══════════════════════════════════════════════════════════════════
-var joyCanvas=null, joyGl=null, joyProgram=null, joyQuad=null, joyW=1, joyH=1, joyDpr=1;
+var joyCanvas=null, joyGl=null, joyProgram=null, joyBuffer=null, joyVertexCount=0, joyW=1, joyH=1, joyDpr=1;
+var joyLocs=null, joyLastBuildKey='';
 function initJoyShader(){
   joyCanvas = document.getElementById('viz-canvas');
   if(!joyCanvas) return false;
-  if(joyGl && joyProgram) return true;
+  if(joyGl && joyProgram && joyBuffer) return true;
 
-  joyGl = joyCanvas.getContext('webgl', {alpha:true, antialias:false, depth:false, stencil:false, premultipliedAlpha:false}) ||
-          joyCanvas.getContext('experimental-webgl', {alpha:true, antialias:false, depth:false, stencil:false, premultipliedAlpha:false});
+  joyGl = joyCanvas.getContext('webgl', {alpha:true, antialias:false, depth:false, stencil:false, premultipliedAlpha:false, preserveDrawingBuffer:false}) ||
+          joyCanvas.getContext('experimental-webgl', {alpha:true, antialias:false, depth:false, stencil:false, premultipliedAlpha:false, preserveDrawingBuffer:false});
   if(!joyGl){ console.warn('Joy shader: WebGL unavailable'); return false; }
 
   var vs = [
-    'attribute vec2 a_pos;',
-    'varying vec2 v_uv;',
-    'void main(){',
-    '  v_uv = a_pos * 0.5 + 0.5;',
-    '  gl_Position = vec4(a_pos, 0.0, 1.0);',
-    '}'
-  ].join('\n');
-
-  var fs = [
-    'precision mediump float;',
-    'varying vec2 v_uv;',
-    'uniform vec2 u_resolution;',
+    'attribute vec4 a_data;', // x, rowIndex, rowNorm, endpointFlag
     'uniform float u_time;',
     'uniform float u_bass;',
     'uniform float u_mid;',
     'uniform float u_high;',
     'uniform float u_speed;',
-    'uniform int u_tex;',
-    '#define MAX_LINES 58',
-    '',
-    'float hash(float n){ return fract(sin(n) * 43758.5453123); }',
-    'vec3 pal(float t){',
-    '  if(u_tex==1) return mix(vec3(1.0,0.22,0.04), vec3(1.0,0.78,0.18), smoothstep(0.0,1.0,t));',
-    '  if(u_tex==2) return mix(vec3(0.18,0.86,1.0), vec3(0.78,1.0,0.18), smoothstep(0.0,1.0,t));',
-    '  if(u_tex==3) return mix(vec3(0.70,0.86,1.0), vec3(1.0,0.58,0.38), smoothstep(0.0,1.0,t));',
-    '  if(u_tex==4) return mix(vec3(0.00,1.0,0.68), vec3(1.0,0.24,0.86), smoothstep(0.0,1.0,t));',
-    '  if(u_tex==5) return mix(vec3(0.58,0.08,1.0), vec3(0.0,0.88,1.0), smoothstep(0.0,1.0,t));',
-    '  if(u_tex==6) return mix(vec3(0.92,0.78,0.48), vec3(0.90,0.28,0.12), smoothstep(0.0,1.0,t));',
-    '  return mix(vec3(0.72,0.90,1.0), vec3(1.0,1.0,1.0), smoothstep(0.0,1.0,t));',
+    'uniform float u_aspect;',
+    'varying float v_row;',
+    'float hash(vec2 p){ return fract(sin(dot(p,vec2(127.1,311.7))) * 43758.5453123); }',
+    'float noise(vec2 p){',
+    '  vec2 i=floor(p); vec2 f=fract(p);',
+    '  vec2 u=f*f*(3.0-2.0*f);',
+    '  float a=hash(i+vec2(0.0,0.0));',
+    '  float b=hash(i+vec2(1.0,0.0));',
+    '  float c=hash(i+vec2(0.0,1.0));',
+    '  float d=hash(i+vec2(1.0,1.0));',
+    '  return mix(mix(a,b,u.x),mix(c,d,u.x),u.y);',
     '}',
-    'float ridgeShape(float x, float row, float tm){',
-    '  float n = 0.0;',
-    '  for(int k=0;k<4;k++){',
-    '    float fk = float(k);',
-    '    float seed = row * 17.13 + fk * 31.71;',
-    '    float active = step(fk, 1.8 + floor(hash(row*9.1) * 2.2));',
-    '    float mu = 0.50 + (hash(seed)-0.5)*0.26 + sin(tm*(0.52+fk*0.13)+seed)*0.045;',
-    '    float sig = 0.020 + hash(seed+4.7)*0.035;',
-    '    float z = (x - mu) / sig;',
-    '    n += active * exp(-0.5*z*z) * (0.54 + hash(seed+8.3)*0.72);',
-    '  }',
-    '  n += sin(x*44.0 + row*0.47 + tm*2.1) * 0.018;',
-    '  n += sin(x*91.0 + row*1.23 - tm*1.6) * 0.007;',
-    '  return max(0.0, n);',
+    'float fbm(vec2 p){',
+    '  float v=0.0; float a=0.5;',
+    '  for(int i=0;i<4;i++){ v += a*noise(p); p*=2.03; a*=0.52; }',
+    '  return v;',
     '}',
     'void main(){',
-    '  vec2 uv = v_uv;',
-    '  float aspect = u_resolution.x / max(1.0,u_resolution.y);',
-    '  float tm = u_time * (0.55 + u_speed*0.20);',
-    '  float audio = clamp(u_bass*0.85 + u_mid*0.35 + u_high*0.20, 0.0, 1.5);',
-    '  float lines = 52.0;',
-    '  float xMin = 0.15;',
-    '  float xMax = 0.85;',
-    '  float yMin = 0.18;',
-    '  float yMax = 0.82;',
-    '  float x = (uv.x - xMin) / (xMax - xMin);',
-    '  float aa = fwidth(uv.y) * 1.8;',
-    '  float stroke = 0.0018 + aa + u_high*0.0009;',
-    '  float ink = 0.0;',
-    '  float glow = 0.0;',
-    '  float rowTint = 0.0;',
-    '  if(x >= -0.02 && x <= 1.02){',
-    '    for(int i=0;i<MAX_LINES;i++){',
-    '      float fi = float(i);',
-    '      if(fi >= lines) break;',
-    '      float rn = fi / (lines - 1.0);',
-    '      float baseY = mix(yMin, yMax, rn);',
-    '      float amp = 0.058 + rn*0.105;',
-    '      float centerMask = smoothstep(0.02,0.20,x) * (1.0-smoothstep(0.80,0.98,x));',
-    '      float shape = ridgeShape(x, fi, tm) * centerMask;',
-    '      float y = baseY - shape * amp * (0.72 + audio*0.62 + rn*0.28);',
-    '      y -= sin(tm*1.35 + rn*8.0) * u_bass * 0.006;',
-    '      float d = abs(uv.y - y);',
-    '      float line = 1.0 - smoothstep(stroke, stroke + aa*2.0, d);',
-    '      float halo = 1.0 - smoothstep(stroke*1.4, stroke*10.0 + u_bass*0.008, d);',
-    '      ink = max(ink, line);',
-    '      glow = max(glow, halo * (0.16 + rn*0.16));',
-    '      rowTint = max(rowTint, line * rn);',
-    '    }',
-    '  }',
-    '  vec3 bg = vec3(0.0);',
-    '  vec3 lineCol = pal(rowTint + tm*0.018);',
-    '  vec3 col = bg;',
-    '  col += lineCol * glow * (0.22 + u_high*0.38);',
-    '  col = mix(col, lineCol, ink * (0.82 + u_high*0.18));',
-    '  float vignette = smoothstep(0.96,0.18,length((uv-0.5)*vec2(aspect,1.0)));',
-    '  col *= 0.72 + vignette*0.45;',
-    '  gl_FragColor = vec4(col, 1.0);',
-    '}'
+    '  float x = a_data.x;',
+    '  float row = a_data.y;',
+    '  float rn = a_data.z;',
+    '  float tm = u_time * (0.10 + u_speed * 0.045);',
+    '  float audio = clamp(u_bass*1.05 + u_mid*0.34 + u_high*0.10, 0.0, 1.85);',
+    '  float center = pow(max(0.0, 1.0 - abs(x)*1.42), 2.18);',
+    '  float ridgeMask = smoothstep(-0.70,-0.10,x) * (1.0-smoothstep(0.10,0.70,x));',
+    '  float sketch = (noise(vec2(x*38.0 + row*0.17, row*0.61 + tm*2.2)) - 0.5) * 0.010;',
+    '  sketch += (noise(vec2(x*220.0 + row*1.7, tm*0.8)) - 0.5) * 0.0035;',
+    '  float slow = fbm(vec2(x*1.9 + row*0.037, tm*0.42 + row*0.019));',
+    '  float sharp = fbm(vec2(x*5.6 + row*0.11, tm*0.92 - row*0.013));',
+    '  float wave = pow(max(0.0, slow), 1.22) * center * ridgeMask;',
+    '  wave += pow(max(0.0, sharp), 2.0) * center * ridgeMask * 0.22;',
+    '  float baseY = mix(0.56, -0.56, rn);',
+    '  float rowDepth = mix(0.50, 1.08, rn);',
+    '  float y = baseY + sketch + wave * rowDepth * (0.13 + audio*0.14);',
+    '  y += sin(tm*2.2 + rn*8.0) * u_bass * 0.010 * center;',
+    '  float perspective = mix(0.84, 1.14, rn);',
+    '  vec2 pos = vec2(x * perspective, y);',
+    '  pos.y -= rn*rn*0.055;',
+    '  gl_Position = vec4(pos, 0.0, 1.0);',
+    '  v_row = rn;',
+    '}',
+  ].join('\n');
+
+  var fs = [
+    'precision mediump float;',
+    'uniform int u_tex;',
+    'uniform float u_high;',
+    'varying float v_row;',
+    'vec3 pal(float t){',
+    '  if(u_tex==1) return mix(vec3(1.0,0.24,0.07), vec3(1.0,0.82,0.34), t);',
+    '  if(u_tex==2) return mix(vec3(0.20,0.88,1.0), vec3(0.82,1.0,0.22), t);',
+    '  if(u_tex==3) return mix(vec3(0.72,0.90,1.0), vec3(1.0,0.60,0.42), t);',
+    '  if(u_tex==4) return mix(vec3(0.00,1.0,0.68), vec3(1.0,0.25,0.86), t);',
+    '  if(u_tex==5) return mix(vec3(0.60,0.10,1.0), vec3(0.05,0.86,1.0), t);',
+    '  if(u_tex==6) return mix(vec3(0.92,0.78,0.50), vec3(0.90,0.30,0.13), t);',
+    '  return vec3(0.96,0.95,0.97);',
+    '}',
+    'void main(){',
+    '  vec3 c = pal(clamp(v_row,0.0,1.0));',
+    '  float b = 0.86 + v_row*0.10 + u_high*0.05;',
+    '  gl_FragColor = vec4(c*b, 1.0);',
+    '}',
   ].join('\n');
 
   function compile(type, src){
@@ -1673,18 +1655,49 @@ function initJoyShader(){
   joyGl.linkProgram(joyProgram);
   if(!joyGl.getProgramParameter(joyProgram, joyGl.LINK_STATUS)) throw new Error('Joy shader link: ' + joyGl.getProgramInfoLog(joyProgram));
 
-  joyQuad = joyGl.createBuffer();
-  joyGl.bindBuffer(joyGl.ARRAY_BUFFER, joyQuad);
-  joyGl.bufferData(joyGl.ARRAY_BUFFER, new Float32Array([-1,-1, 1,-1, -1,1, -1,1, 1,-1, 1,1]), joyGl.STATIC_DRAW);
+  joyBuffer = joyGl.createBuffer();
+  joyLocs = {
+    a_data: joyGl.getAttribLocation(joyProgram,'a_data'),
+    u_time: joyGl.getUniformLocation(joyProgram,'u_time'),
+    u_bass: joyGl.getUniformLocation(joyProgram,'u_bass'),
+    u_mid: joyGl.getUniformLocation(joyProgram,'u_mid'),
+    u_high: joyGl.getUniformLocation(joyProgram,'u_high'),
+    u_speed: joyGl.getUniformLocation(joyProgram,'u_speed'),
+    u_aspect: joyGl.getUniformLocation(joyProgram,'u_aspect'),
+    u_tex: joyGl.getUniformLocation(joyProgram,'u_tex')
+  };
   joyGl.disable(joyGl.DEPTH_TEST);
   joyGl.disable(joyGl.CULL_FACE);
+  joyGl.disable(joyGl.BLEND);
   return true;
+}
+function buildJoyLineMesh(){
+  if(!joyGl || !joyBuffer) return;
+  // A line-strip is not portable with independent rows, so we emit explicit segments.
+  // 54 rows × 82 segments = 8,856 vertices, tiny for WebGL and far cheaper than 2D paths.
+  var rows = IS_MOBILE ? 46 : 54;
+  var pts = IS_MOBILE ? 72 : 84;
+  var key = rows + ':' + pts;
+  if(key === joyLastBuildKey && joyVertexCount > 0) return;
+  var verts = [];
+  for(var r=0; r<rows; r++){
+    var rn = rows <= 1 ? 0 : r/(rows-1);
+    for(var i=0; i<pts-1; i++){
+      var x1 = -0.72 + (i/(pts-1))*1.44;
+      var x2 = -0.72 + ((i+1)/(pts-1))*1.44;
+      verts.push(x1, r, rn, 0, x2, r, rn, 1);
+    }
+  }
+  joyVertexCount = verts.length / 4;
+  joyGl.bindBuffer(joyGl.ARRAY_BUFFER, joyBuffer);
+  joyGl.bufferData(joyGl.ARRAY_BUFFER, new Float32Array(verts), joyGl.STATIC_DRAW);
+  joyLastBuildKey = key;
 }
 function resizeJoyShader(){
   joyCanvas = document.getElementById('viz-canvas');
   if(!joyCanvas) return;
-  // Joy is now GPU-bound, so keep enough resolution for crisp lines while avoiding retina overkill.
-  joyDpr = Math.min(window.devicePixelRatio||1, IS_MOBILE ? 1.0 : 1.25);
+  // Crisp enough for line art, capped to prevent retina overdraw.
+  joyDpr = Math.min(window.devicePixelRatio||1, IS_MOBILE ? 1.0 : 1.35);
   joyW = Math.max(1, Math.floor(window.innerWidth * joyDpr));
   joyH = Math.max(1, Math.floor(window.innerHeight * joyDpr));
   if(joyCanvas.width !== joyW || joyCanvas.height !== joyH){
@@ -1696,20 +1709,23 @@ function resizeJoyShader(){
 function drawJoyShader(t, spd, bass, mid, high, freq){
   if(!initJoyShader()) return;
   resizeJoyShader();
-  joyGl.useProgram(joyProgram);
-  joyGl.bindBuffer(joyGl.ARRAY_BUFFER, joyQuad);
-  var a = joyGl.getAttribLocation(joyProgram,'a_pos');
-  joyGl.enableVertexAttribArray(a);
-  joyGl.vertexAttribPointer(a,2,joyGl.FLOAT,false,0,0);
+  buildJoyLineMesh();
   joyGl.viewport(0,0,joyW,joyH);
-  joyGl.uniform2f(joyGl.getUniformLocation(joyProgram,'u_resolution'),joyW,joyH);
-  joyGl.uniform1f(joyGl.getUniformLocation(joyProgram,'u_time'),t);
-  joyGl.uniform1f(joyGl.getUniformLocation(joyProgram,'u_bass'),bass||0);
-  joyGl.uniform1f(joyGl.getUniformLocation(joyProgram,'u_mid'),mid||0);
-  joyGl.uniform1f(joyGl.getUniformLocation(joyProgram,'u_high'),high||0);
-  joyGl.uniform1f(joyGl.getUniformLocation(joyProgram,'u_speed'),spd||0.7);
-  joyGl.uniform1i(joyGl.getUniformLocation(joyProgram,'u_tex'),TEX||0);
-  joyGl.drawArrays(joyGl.TRIANGLES,0,6);
+  joyGl.clearColor(0,0,0,1);
+  joyGl.clear(joyGl.COLOR_BUFFER_BIT);
+  joyGl.useProgram(joyProgram);
+  joyGl.bindBuffer(joyGl.ARRAY_BUFFER, joyBuffer);
+  joyGl.enableVertexAttribArray(joyLocs.a_data);
+  joyGl.vertexAttribPointer(joyLocs.a_data,4,joyGl.FLOAT,false,0,0);
+  try { joyGl.lineWidth(IS_MOBILE ? 1 : 1.25); } catch(e) {}
+  joyGl.uniform1f(joyLocs.u_time, t || 0);
+  joyGl.uniform1f(joyLocs.u_bass, bass || 0);
+  joyGl.uniform1f(joyLocs.u_mid, mid || 0);
+  joyGl.uniform1f(joyLocs.u_high, high || 0);
+  joyGl.uniform1f(joyLocs.u_speed, spd || 0.7);
+  joyGl.uniform1f(joyLocs.u_aspect, joyW / Math.max(1,joyH));
+  joyGl.uniform1i(joyLocs.u_tex, TEX || 0);
+  joyGl.drawArrays(joyGl.LINES, 0, joyVertexCount);
 }
 
 

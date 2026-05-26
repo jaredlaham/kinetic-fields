@@ -1432,6 +1432,8 @@ function initLiquidMetalShader(){
     'uniform float u_bass;',
     'uniform float u_mid;',
     'uniform float u_high;',
+    'uniform float u_freq;',
+    'uniform float u_beat;',
     'uniform float u_speed;',
     'uniform int u_tex;',
     'const float PI = 3.141592654;',
@@ -1566,6 +1568,7 @@ function drawLiquidMetalShader(t, spd, bass, mid, high, freq){
 // ═══════════════════════════════════════════════════════════════════
 var joyCanvas=null, joyGl=null, joyProgram=null, joyBuffer=null, joyW=1, joyH=1, joyDpr=1;
 var joyLocs=null;
+var joyLevelSm=0, joyBeatSm=0, joyBassPrev=0;
 function initJoyShader(){
   joyCanvas = document.getElementById('joy-canvas');
   if(!joyCanvas) return false;
@@ -1592,6 +1595,8 @@ function initJoyShader(){
     'uniform float u_bass;',
     'uniform float u_mid;',
     'uniform float u_high;',
+    'uniform float u_freq;',
+    'uniform float u_beat;',
     'uniform float u_speed;',
     'uniform int u_tex;',
     'float hash(vec2 p){ return fract(sin(dot(p, vec2(127.1,311.7))) * 43758.5453123); }',
@@ -1618,24 +1623,30 @@ function initJoyShader(){
     '  if(u_tex==6) return mix(vec3(0.92,0.78,0.50), vec3(0.90,0.30,0.13), t);',
     '  return vec3(0.96,0.95,0.97);',
     '}',
-    'float lineY(float x, float row, float rn, float tm, float audio){',
+    'float lineY(float x, float row, float rn, float tm, float bass, float mid, float high, float freq, float beat){',
     '  float base = mix(0.20, 0.82, rn);',
-    '  float center = pow(max(0.0, 1.0 - abs(x-0.5)*2.35), 2.15);',
-    '  float gate = smoothstep(0.12,0.32,x) * (1.0 - smoothstep(0.68,0.88,x));',
-    '  float slow = fbm(vec2(x*2.1 + row*0.071, tm*0.26 + row*0.039));',
-    '  float sharp = fbm(vec2(x*7.2 + row*0.13, tm*0.54 - row*0.021));',
-    '  float peak = pow(slow, 1.35) * 0.122 + pow(sharp, 2.25) * 0.050;',
-    '  float micro = (noise(vec2(x*94.0 + row*0.43, tm*1.75 + row)) - 0.5) * 0.004;',
-    '  float amp = (0.52 + rn*1.05) * (0.74 + audio*1.10);',
-    '  return base - (peak * center * gate * amp) + micro;',
+    '  float center = pow(max(0.0, 1.0 - abs(x-0.5)*2.35), 1.65);',
+    '  float core = pow(max(0.0, 1.0 - abs(x-0.5)*3.35), 2.15);',
+    '  float gate = smoothstep(0.10,0.30,x) * (1.0 - smoothstep(0.70,0.90,x));',
+    '  float slow = fbm(vec2(x*2.0 + row*0.071, tm*0.22 + row*0.039 + bass*0.55));',
+    '  float sharp = fbm(vec2(x*7.0 + row*0.13 + mid*1.2, tm*0.48 - row*0.021));',
+    '  float peak = pow(slow, 1.30) * 0.105 + pow(sharp, 2.10) * 0.040;',
+    '  float waveform = sin((x-0.5)*25.0 + row*0.38 + tm*2.15) * 0.5 + 0.5;',
+    '  waveform += (sin((x-0.5)*53.0 - tm*3.9 + row*0.17) * 0.5 + 0.5) * 0.35;',
+    '  waveform = waveform / 1.35;',
+    '  float soundMound = core * gate * (bass*0.185 + freq*0.105 + beat*0.235);',
+    '  float soundRipple = center * gate * pow(waveform, 1.65) * (mid*0.065 + high*0.028 + beat*0.055);',
+    '  float micro = (noise(vec2(x*94.0 + row*0.43, tm*1.75 + row)) - 0.5) * (0.003 + high*0.006);',
+    '  float amp = (0.54 + rn*1.02) * (0.72 + bass*0.90 + mid*0.34 + freq*0.48 + beat*0.80);',
+    '  return base - ((peak * center * gate * amp) + soundMound + soundRipple) + micro;',
     '}',
     'void main(){',
     '  vec2 uv = v_uv;',
     '  float aspect = u_resolution.x / max(1.0, u_resolution.y);',
     '  float x = (uv.x - 0.5) * min(1.0, aspect/1.45) + 0.5;',
     '  float y = uv.y;',
-    '  float audio = clamp(u_bass*1.25 + u_mid*0.36 + u_high*0.10, 0.0, 1.6);',
-    '  float tm = u_time * (0.045 + u_speed*0.022);',
+    '  float audio = clamp(u_bass*1.10 + u_mid*0.42 + u_freq*0.72 + u_beat*0.95, 0.0, 1.8);',
+    '  float tm = u_time * (0.040 + u_speed*0.020 + audio*0.010);',
     '  vec3 col = vec3(0.0);',
     '  float ink = 0.0;',
     '  float fillMask = 0.0;',
@@ -1643,7 +1654,7 @@ function initJoyShader(){
     '  for(int i=0;i<ROWS;i++){',
     '    float fi = float(i);',
     '    float rn = fi / float(ROWS-1);',
-    '    float ly = lineY(x, fi, rn, tm, audio);',
+    '    float ly = lineY(x, fi, rn, tm, u_bass, u_mid, u_high, u_freq, u_beat);',
     '    float width = 0.00225 + rn*0.00045;',
     '    float d = abs(y - ly);',
     '    float line = smoothstep(width*2.6, width*0.35, d);',
@@ -1685,6 +1696,8 @@ function initJoyShader(){
     u_bass: joyGl.getUniformLocation(joyProgram,'u_bass'),
     u_mid: joyGl.getUniformLocation(joyProgram,'u_mid'),
     u_high: joyGl.getUniformLocation(joyProgram,'u_high'),
+    u_freq: joyGl.getUniformLocation(joyProgram,'u_freq'),
+    u_beat: joyGl.getUniformLocation(joyProgram,'u_beat'),
     u_speed: joyGl.getUniformLocation(joyProgram,'u_speed'),
     u_tex: joyGl.getUniformLocation(joyProgram,'u_tex')
   };
@@ -1716,9 +1729,20 @@ function drawJoyShader(t, spd, bass, mid, high, freq){
   joyGl.vertexAttribPointer(joyLocs.a_pos,2,joyGl.FLOAT,false,0,0);
   joyGl.uniform2f(joyLocs.u_resolution, joyW, joyH);
   joyGl.uniform1f(joyLocs.u_time, t || 0);
-  joyGl.uniform1f(joyLocs.u_bass, bass || 0.08);
-  joyGl.uniform1f(joyLocs.u_mid, mid || 0.05);
-  joyGl.uniform1f(joyLocs.u_high, high || 0.04);
+  var jb = (bass === undefined || bass === null) ? 0.08 : Math.max(0, Math.min(1, bass));
+  var jm = (mid  === undefined || mid  === null) ? 0.05 : Math.max(0, Math.min(1, mid));
+  var jh = (high === undefined || high === null) ? 0.04 : Math.max(0, Math.min(1, high));
+  var jf = (freq === undefined || freq === null) ? (jb*0.45 + jm*0.35 + jh*0.20) : Math.max(0, Math.min(1, freq));
+  var rawLevel = Math.min(1, jb*1.10 + jm*0.45 + jf*0.70);
+  var transient = Math.max(0, jb - joyBassPrev) * 5.5 + Math.max(0, rawLevel - joyLevelSm) * 2.8;
+  joyBassPrev = jb;
+  joyLevelSm = joyLevelSm + (rawLevel - joyLevelSm) * 0.22;
+  joyBeatSm = Math.max(transient, joyBeatSm * 0.84);
+  joyGl.uniform1f(joyLocs.u_bass, jb);
+  joyGl.uniform1f(joyLocs.u_mid, jm);
+  joyGl.uniform1f(joyLocs.u_high, jh);
+  joyGl.uniform1f(joyLocs.u_freq, joyLevelSm);
+  joyGl.uniform1f(joyLocs.u_beat, Math.max(0, Math.min(1, joyBeatSm)));
   joyGl.uniform1f(joyLocs.u_speed, spd || 0.7);
   joyGl.uniform1i(joyLocs.u_tex, TEX || 0);
   joyGl.drawArrays(joyGl.TRIANGLE_STRIP, 0, 4);

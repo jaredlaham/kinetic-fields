@@ -405,6 +405,7 @@ body::after { content: ''; position: fixed; inset: 0; pointer-events: none; z-in
 <div id="mode-transition"></div>
 <canvas id="glc"></canvas>
 <canvas id="viz-canvas" style="position:fixed;inset:0;width:100%;height:100%;display:none;pointer-events:none;z-index:8;background:transparent;contain:strict;touch-action:none"></canvas>
+<canvas id="joy-canvas" style="position:fixed;inset:0;width:100%;height:100%;display:none;pointer-events:none;z-index:8;background:#000;contain:strict;touch-action:none"></canvas>
 <canvas id="viz-2d-canvas" style="position:fixed;inset:0;width:100%;height:100%;display:none;pointer-events:none;z-index:8;background:transparent;contain:strict;touch-action:none"></canvas>
 <canvas id="fluid-canvas" style="position:fixed;inset:0;width:100%;height:100%;display:none;pointer-events:none;z-index:2;contain:strict;touch-action:none"></canvas>
 <canvas id="bio-canvas"   style="position:fixed;inset:0;width:100%;height:100%;display:none;z-index:8;contain:strict;touch-action:none"></canvas>
@@ -792,6 +793,7 @@ function setMode(m) {
   var glCanvas = document.getElementById('glc');
   var fluidCanvas = document.getElementById('fluid-canvas');
   var vizCanvas = document.getElementById('viz-canvas');       // WebGL shader canvas for liquidmetal
+  var joyModeCanvas = document.getElementById('joy-canvas');    // Dedicated WebGL canvas for Joy; avoids context conflicts.
   var viz2DCanvas = document.getElementById('viz-2d-canvas');  // 2D canvas for osc/fft/ascii/etc.
 
   if (orbCtrls) orbCtrls.style.display = (m === 'orb') ? '' : 'none';
@@ -815,10 +817,14 @@ function setMode(m) {
   if (glCanvas) glCanvas.style.display = (is2D || isLiquidMetalShader || isJoyShader || m === 'bio' || m === 'tiedye') ? 'none' : 'block';
 
   if (vizCanvas) {
-    vizCanvas.style.display = (isLiquidMetalShader || isJoyShader) ? 'block' : 'none';
+    vizCanvas.style.display = isLiquidMetalShader ? 'block' : 'none';
     if (isLiquidMetalShader) {
       resizeLiquidMetalShader();
     }
+  }
+
+  if (joyModeCanvas) {
+    joyModeCanvas.style.display = isJoyShader ? 'block' : 'none';
     if (isJoyShader) {
       resizeJoyShader();
     }
@@ -1563,7 +1569,7 @@ function drawLiquidMetalShader(t, spd, bass, mid, high, freq){
 var joyCanvas=null, joyGl=null, joyProgram=null, joyBuffer=null, joyVertexCount=0, joyW=1, joyH=1, joyDpr=1;
 var joyLocs=null, joyLastBuildKey='';
 function initJoyShader(){
-  joyCanvas = document.getElementById('viz-canvas');
+  joyCanvas = document.getElementById('joy-canvas');
   if(!joyCanvas) return false;
   if(joyGl && joyProgram && joyBuffer) return true;
 
@@ -1694,7 +1700,7 @@ function buildJoyLineMesh(){
   joyLastBuildKey = key;
 }
 function resizeJoyShader(){
-  joyCanvas = document.getElementById('viz-canvas');
+  joyCanvas = document.getElementById('joy-canvas');
   if(!joyCanvas) return;
   // Crisp enough for line art, capped to prevent retina overdraw.
   joyDpr = Math.min(window.devicePixelRatio||1, IS_MOBILE ? 1.0 : 1.35);
@@ -3579,7 +3585,8 @@ function animate(){
     drawLiquidMetalShader(t, spd, sBass, sMid, sHigh, sFreq);
   }
   if(MODE==='joy'){
-    drawJoyShader(t, spd, sBass, sMid, sHigh, sFreq);
+    try { drawJoyShader(t, spd, sBass, sMid, sHigh, sFreq); }
+    catch(e) { console.warn('Joy shader draw error:', e); }
   }
   if(['osc','fft','dots','lissajous','retrowave','star','pulse','lightning','ascii'].indexOf(MODE)!==-1){
     drawExtraVisualizer(t, spd, bloom);

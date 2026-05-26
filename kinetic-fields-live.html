@@ -1631,10 +1631,10 @@ function initJoyShader(){
     '  float waveform = sin((x-0.5)*25.0 + row*0.38 + tm*2.15) * 0.5 + 0.5;',
     '  waveform += (sin((x-0.5)*53.0 - tm*3.9 + row*0.17) * 0.5 + 0.5) * 0.35;',
     '  waveform = waveform / 1.35;',
-    '  float soundMound = core * gate * (bass*0.185 + freq*0.105 + beat*0.235);',
-    '  float soundRipple = center * gate * pow(waveform, 1.65) * (mid*0.065 + high*0.028 + beat*0.055);',
-    '  float micro = (noise(vec2(x*94.0 + row*0.43, tm*1.75 + row)) - 0.5) * (0.003 + high*0.006);',
-    '  float amp = (0.54 + rn*1.02) * (0.72 + bass*0.90 + mid*0.34 + freq*0.48 + beat*0.80);',
+    '  float soundMound = core * gate * (bass*0.36 + freq*0.22 + beat*0.46);',
+    '  float soundRipple = center * gate * pow(waveform, 1.55) * (mid*0.16 + high*0.075 + beat*0.18);',
+    '  float micro = (noise(vec2(x*94.0 + row*0.43, tm*1.75 + row)) - 0.5) * (0.004 + high*0.014 + beat*0.010);',
+    '  float amp = (0.60 + rn*1.08) * (0.76 + bass*1.85 + mid*0.82 + freq*1.10 + beat*1.75);',
     '  return base - ((peak * center * gate * amp) + soundMound + soundRipple) + micro;',
     '}',
     'void main(){',
@@ -1642,7 +1642,7 @@ function initJoyShader(){
     '  float aspect = u_resolution.x / max(1.0, u_resolution.y);',
     '  float x = (uv.x - 0.5) * min(1.0, aspect/1.45) + 0.5;',
     '  float y = uv.y;',
-    '  float audio = clamp(u_bass*1.10 + u_mid*0.42 + u_freq*0.72 + u_beat*0.95, 0.0, 1.8);',
+    '  float audio = clamp(u_bass*1.75 + u_mid*0.75 + u_freq*1.20 + u_beat*1.55, 0.0, 2.4);',
     '  float tm = u_time * (0.040 + u_speed*0.020 + audio*0.010);',
     '  vec3 col = vec3(0.0);',
     '  float ink = 0.0;',
@@ -1652,15 +1652,16 @@ function initJoyShader(){
     '    float fi = float(i);',
     '    float rn = fi / float(ROWS-1);',
     '    float ly = lineY(x, fi, rn, tm, u_bass, u_mid, u_high, u_freq, u_beat);',
-    '    float width = 0.00225 + rn*0.00045;',
+    '    float audioWidth = clamp(u_bass*0.0018 + u_mid*0.0010 + u_beat*0.0024, 0.0, 0.0042);',
+    '    float width = 0.00420 + rn*0.00090 + audioWidth;',
     '    float d = abs(y - ly);',
-    '    float line = smoothstep(width*2.6, width*0.35, d);',
+    '    float line = smoothstep(width*2.15, width*0.28, d);',
     '    // black fill beneath each ridge gives the stacked Joy Division occlusion.',
     '    float under = smoothstep(ly, ly + 0.004, y) * (1.0 - smoothstep(ly + 0.018, ly + 0.060, y));',
     '    fillMask = max(fillMask, under * 0.95);',
     '    vec3 lc = pal(rn);',
     '    ink = max(ink, line);',
-    '    col = max(col, lc * line * (0.88 + rn*0.12 + u_high*0.08));',
+    '    col = max(col, lc * line * (0.94 + rn*0.16 + u_high*0.18 + u_beat*0.08));',
     '  }',
     '  col = mix(col, vec3(0.0), fillMask * (1.0 - ink));',
     '  // subtle center glow so the mode is visibly alive even with no mic active',
@@ -1730,15 +1731,15 @@ function drawJoyShader(t, spd, bass, mid, high, freq){
   var jm = (mid  === undefined || mid  === null) ? 0.05 : Math.max(0, Math.min(1, mid));
   var jh = (high === undefined || high === null) ? 0.04 : Math.max(0, Math.min(1, high));
   var jf = (freq === undefined || freq === null) ? (jb*0.45 + jm*0.35 + jh*0.20) : Math.max(0, Math.min(1, freq));
-  var rawLevel = Math.min(1, jb*1.10 + jm*0.45 + jf*0.70);
-  var transient = Math.max(0, jb - joyBassPrev) * 5.5 + Math.max(0, rawLevel - joyLevelSm) * 2.8;
+  var rawLevel = Math.min(1, jb*1.65 + jm*0.85 + jh*0.35 + jf*1.05);
+  var transient = Math.max(0, jb - joyBassPrev) * 8.5 + Math.max(0, rawLevel - joyLevelSm) * 5.0;
   joyBassPrev = jb;
-  joyLevelSm = joyLevelSm + (rawLevel - joyLevelSm) * 0.22;
-  joyBeatSm = Math.max(transient, joyBeatSm * 0.84);
-  joyGl.uniform1f(joyLocs.u_bass, jb);
-  joyGl.uniform1f(joyLocs.u_mid, jm);
-  joyGl.uniform1f(joyLocs.u_high, jh);
-  joyGl.uniform1f(joyLocs.u_freq, joyLevelSm);
+  joyLevelSm = joyLevelSm + (rawLevel - joyLevelSm) * 0.34;
+  joyBeatSm = Math.max(transient, joyBeatSm * 0.88);
+  joyGl.uniform1f(joyLocs.u_bass, Math.min(1, jb * 1.35));
+  joyGl.uniform1f(joyLocs.u_mid, Math.min(1, jm * 1.45));
+  joyGl.uniform1f(joyLocs.u_high, Math.min(1, jh * 1.30));
+  joyGl.uniform1f(joyLocs.u_freq, Math.min(1, joyLevelSm * 1.35));
   joyGl.uniform1f(joyLocs.u_beat, Math.max(0, Math.min(1, joyBeatSm)));
   joyGl.uniform1f(joyLocs.u_speed, spd || 0.7);
   joyGl.uniform1i(joyLocs.u_tex, TEX || 0);

@@ -182,3 +182,29 @@ def test_pads_are_5_to_4_with_equal_gutters(qapp, size):
         assert v._hit(r.center()) == (x, y)
     gutter_pt = QPointF(rects[(3, 3)].right() + 0.4, rects[(3, 3)].center().y())
     assert v._hit(gutter_pt) == (3, 3)
+
+
+def test_topo_background_opacity_and_custom_svg(ctl, tmp_path):
+    view, ins = ctl.window.view, ctl.window.inspector
+    assert view._topo is not None and view._topo.isValid()        # bundled pattern
+    assert abs(view._topo_opacity - ctl.settings["topo_opacity"] / 100) < 1e-9
+    ins.topo.setValue(60)                                          # slider in Colors ▸ Workspace Background
+    assert ctl.settings["topo_opacity"] == 60 and abs(view._topo_opacity - 0.6) < 1e-9
+    ins.topo.setValue(0)
+    assert view._topo_opacity == 0
+    view.resize(800, 600)
+    assert view._render_topo() is not None
+    # custom SVG is copied into Application Support and used
+    svg = tmp_path / "mine.svg"
+    svg.write_text('<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 10 5">'
+                   '<path d="M0,2 L10,3" stroke="#fff" fill="none"/></svg>')
+    ctl.set_topo_svg(str(svg))
+    assert ctl.settings["topo_svg"].endswith("topo.svg") and ctl.topo_path() == ctl.settings["topo_svg"]
+    assert "Custom" in ins.topo_source.text()
+    # a broken SVG is reported, not crashed on
+    bad = tmp_path / "bad.svg"
+    bad.write_text("not an svg")
+    ctl.set_topo_svg(str(bad))
+    assert "Could not load" in ins.topo_source.text()
+    ctl.set_topo_svg("")
+    assert ctl.topo_path().endswith(("topo.svg", "topo_custom.svg")) and "Default" in ins.topo_source.text()

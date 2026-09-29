@@ -20,7 +20,9 @@ a = Analysis(
     [os.path.join(ROOT, "main.py")],
     pathex=[ROOT],
     binaries=[],
-    datas=[(os.path.join(ROOT, "apc_light", "assets", "AppIcon-256.png"), "apc_light/assets")],
+    datas=[(os.path.join(ROOT, "apc_light", "assets", f), "apc_light/assets")
+           for f in ("AppIcon-256.png", "topo.svg", "topo_custom.svg")
+           if os.path.exists(os.path.join(ROOT, "apc_light", "assets", f))],
     hiddenimports=hiddenimports,
     hookspath=[],
     runtime_hooks=[],

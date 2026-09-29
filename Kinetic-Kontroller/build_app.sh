@@ -63,6 +63,10 @@ if [[ "$RUN_TESTS" == 1 ]]; then
   QT_QPA_PLATFORM=offscreen "$VPY" -m pytest -q tests
 fi
 
+# ------------------------------------------------------------------ topo ----
+# Workspace background pattern (bundled; the app falls back to a built-in one).
+tools/fetch_topo.sh || true
+
 # ------------------------------------------------------------------ icon ----
 # apc_light/assets/AppIcon.icns is committed; regenerate it from the source art
 # with:  pip install pillow numpy scipy && python tools/make_icon.py

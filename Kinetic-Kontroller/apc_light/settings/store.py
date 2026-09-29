@@ -33,6 +33,8 @@ DEFAULTS: Dict[str, Any] = {
     "patterns": {},               # saved Custom Pattern snapshots: name -> 64 colours
     "notes": "",                  # free-text notes (Browser > Notes)
     "ui_state": {},               # tabs, collapsed sections
+    "topo_opacity": 25,           # workspace topo pattern opacity, percent (0 = hidden)
+    "topo_svg": "",               # custom topo SVG path ("" = bundled pattern)
 }
 
 

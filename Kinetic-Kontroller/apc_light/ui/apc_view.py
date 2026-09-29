@@ -19,6 +19,7 @@ from PySide6.QtCore import QPointF, QRectF, Qt, QTimer, Signal
 from PySide6.QtGui import (
     QColor, QFont, QLinearGradient, QPainter, QPainterPath, QPen, QPixmap, QRadialGradient,
 )
+from PySide6.QtSvg import QSvgRenderer
 from PySide6.QtWidgets import QSizePolicy, QWidget
 
 from ..engine.frame import OFF, Pad
@@ -83,6 +84,10 @@ class ApcView(QWidget):
         self._last_drag: Optional[tuple] = None
         self._body: Optional[QPixmap] = None
         self._body_key = None
+        self._topo: Optional[QSvgRenderer] = None
+        self._topo_opacity = 0.0
+        self._topo_pm: Optional[QPixmap] = None
+        self._topo_key = None
         self._anim = QTimer(self)
         self._anim.setInterval(33)
         self._anim.timeout.connect(self.update)
@@ -104,6 +109,48 @@ class ApcView(QWidget):
     def set_connected(self, connected: bool) -> None:
         self._connected = connected
         self.update()
+
+    def set_background(self, svg_path: Optional[str], opacity: float) -> bool:
+        """Topographic pattern filling the workspace behind the APC.
+        ``opacity`` 0..1. Returns False if the SVG could not be loaded."""
+        ok = True
+        if svg_path != getattr(self, "_topo_path", None):
+            self._topo_path = svg_path
+            self._topo = None
+            if svg_path:
+                r = QSvgRenderer(svg_path)
+                if r.isValid():
+                    r.setAspectRatioMode(Qt.KeepAspectRatioByExpanding)
+                    self._topo = r
+                else:
+                    ok = False
+            self._topo_pm = None
+        self._topo_opacity = max(0.0, min(1.0, opacity))
+        self.update()
+        return ok
+
+    def _render_topo(self) -> Optional[QPixmap]:
+        if self._topo is None:
+            return None
+        dpr = self.devicePixelRatioF()
+        key = (self.width(), self.height(), dpr)
+        if self._topo_pm is not None and self._topo_key == key:
+            return self._topo_pm
+        pm = QPixmap(int(self.width() * dpr), int(self.height() * dpr))
+        pm.setDevicePixelRatio(dpr)
+        pm.fill(Qt.transparent)
+        p = QPainter(pm)
+        p.setRenderHint(QPainter.Antialiasing)
+        # "cover": fill the whole area, cropping the SVG's overflow, centred
+        vb = self._topo.viewBoxF()
+        if vb.isEmpty():
+            vb = QRectF(0, 0, self._topo.defaultSize().width(), self._topo.defaultSize().height())
+        s = max(self.width() / max(vb.width(), 1), self.height() / max(vb.height(), 1))
+        w, h = vb.width() * s, vb.height() * s
+        self._topo.render(p, QRectF((self.width() - w) / 2, (self.height() - h) / 2, w, h))
+        p.end()
+        self._topo_pm, self._topo_key = pm, key
+        return pm
 
     def set_touch_mode(self, enabled: bool) -> None:
         """Pads are clickable (paint / touch reactions) for the active effect."""
@@ -286,12 +333,20 @@ class ApcView(QWidget):
 
     def resizeEvent(self, e) -> None:
         self._body = None
+        self._topo_pm = None
         super().resizeEvent(e)
 
     # -- painting -------------------------------------------------------------------------
     def paintEvent(self, _event) -> None:
         p = QPainter(self)
         p.setRenderHint(QPainter.Antialiasing)
+        # layer order: workspace grey (widget bg) < topo pattern < APC (+ shadow)
+        if self._topo_opacity > 0:
+            topo = self._render_topo()
+            if topo is not None:
+                p.setOpacity(self._topo_opacity)
+                p.drawPixmap(0, 0, topo)
+                p.setOpacity(1.0)
         p.drawPixmap(0, 0, self._render_body())
         body, grid, pitch = self._geometry()
         now = time.monotonic()

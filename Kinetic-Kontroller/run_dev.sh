@@ -8,4 +8,5 @@ if [[ ! -x .venv/bin/python ]]; then
   python3 -m venv .venv
   .venv/bin/pip install -q -r requirements-dev.txt
 fi
+tools/fetch_topo.sh >/dev/null 2>&1 || true
 exec .venv/bin/python main.py "$@"

@@ -68,6 +68,9 @@ class Inspector(QWidget):
     blackout = Signal()
     ui_changed = Signal(str, object)
     copy_log = Signal()
+    topo_opacity_changed = Signal(int)
+    choose_topo = Signal()
+    reset_topo = Signal()
     open_logs = Signal()
 
     def __init__(self, settings, effects: List[Type[Effect]], log_handler, parent=None) -> None:
@@ -150,6 +153,23 @@ class Inspector(QWidget):
         hint.setObjectName("Hint")
         hint.setWordWrap(True)
         sec.add(hint)
+        cl.addWidget(sec)
+        sec = self._section("Workspace Background")
+        self.topo = ParameterSlider("Topo pattern opacity", 0, 100, int(s.get("topo_opacity", 25)),
+                                    fmt=lambda v: f"{v}%" if v else "Off", left="Off", right="100%")
+        self.topo.setToolTip("Opacity of the topographic pattern behind the on-screen APC")
+        sec.add(self.topo)
+        row = QHBoxLayout()
+        row.setSpacing(S.SM)
+        self.topo_choose = QPushButton("Choose SVG…")
+        self.topo_reset = QPushButton("Use Default")
+        row.addWidget(self.topo_choose)
+        row.addWidget(self.topo_reset)
+        sec.add_layout(row)
+        self.topo_source = QLabel("")
+        self.topo_source.setObjectName("Hint")
+        self.topo_source.setWordWrap(True)
+        sec.add(self.topo_source)
         cl.addWidget(sec)
         cl.addStretch(1)
 
@@ -250,6 +270,9 @@ class Inspector(QWidget):
         self.opt_preview.toggled.connect(self.preview_changed)
         self.port.changed.connect(lambda t: self.port_chosen.emit("" if t == AUTO_PORT else t))
         self.blackout_btn.clicked.connect(self.blackout)
+        self.topo.valueChanged.connect(self.topo_opacity_changed)
+        self.topo_choose.clicked.connect(self.choose_topo)
+        self.topo_reset.clicked.connect(self.reset_topo)
         tab = s.get("ui_state", {}).get("inspector_tab")
         if tab in self.TABS:
             self.set_tab(tab)

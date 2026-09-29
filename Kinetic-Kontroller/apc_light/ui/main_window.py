@@ -204,6 +204,9 @@ class MainWindow(QMainWindow):
         ins.blackout.connect(c.blackout)
         ins.ui_changed.connect(c.set_ui_state)
         ins.open_logs.connect(c.open_log_folder)
+        ins.topo_opacity_changed.connect(c.set_topo_opacity)
+        ins.choose_topo.connect(c.choose_topo)
+        ins.reset_topo.connect(lambda: c.set_topo_svg(""))
         self.statusbar.menu_clicked.connect(lambda b: self._popup(b, self._settings_menu))
 
     # ------------------------------------------------------------------ updates from the controller

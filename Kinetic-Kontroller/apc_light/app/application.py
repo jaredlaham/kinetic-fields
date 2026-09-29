@@ -143,6 +143,7 @@ class Controller(QObject):
         self._poll_timer.timeout.connect(self.poll_midi)
         self._poll_timer.start()
 
+        self.apply_topo()
         self.window.show_effect(None, self._shown_id)
         if s["restore_on_launch"] and self._shown_id:
             log.info("Restoring last scene: %s", self._shown_id)
@@ -313,6 +314,58 @@ class Controller(QObject):
                                 f"Created {dest.name} in your effects folder.\n\n"
                                 "Edit it in any text editor, then restart Kinetic Kontroller to load it.")
         QDesktopServices.openUrl(QUrl.fromLocalFile(str(folder)))
+
+    # -- workspace topo background ------------------------------------------------
+    def topo_path(self) -> str:
+        """Custom SVG if set and present, else the downloaded pattern bundled at
+        build time (assets/topo_custom.svg), else the built-in fallback."""
+        custom = self.settings["topo_svg"]
+        if custom and Path(custom).is_file():
+            return custom
+        for name in ("topo_custom.svg", "topo.svg"):
+            p = ASSETS / name
+            if p.is_file():
+                return str(p)
+        return ""
+
+    def apply_topo(self) -> None:
+        path = self.topo_path()
+        ok = self.window.view.set_background(path or None, self.settings["topo_opacity"] / 100.0)
+        if not ok:
+            log.warning("Topo SVG could not be loaded: %s", path)
+        label = "Custom: " + Path(path).name if self.settings["topo_svg"] and path == self.settings["topo_svg"] \
+            else ("Default pattern" if path else "No pattern available")
+        self.window.inspector.topo_source.setText(label if ok else f"Could not load {Path(path).name}")
+
+    def set_topo_opacity(self, percent: int) -> None:
+        self.settings["topo_opacity"] = int(percent)
+        self.save_soon()
+        self.window.view.set_background(self.topo_path() or None, percent / 100.0)
+
+    def set_topo_svg(self, path: str) -> None:
+        if path:
+            # keep a private copy so moving/deleting the original doesn't break it
+            import shutil
+
+            dest = paths.support_dir() / "topo.svg"
+            try:
+                shutil.copyfile(path, dest)
+                path = str(dest)
+            except OSError as exc:
+                log.warning("Could not copy topo SVG (%s); using it in place", exc)
+        self.settings["topo_svg"] = path
+        self.save_soon()
+        self.window.view._topo_path = object()  # force a reload even if the path is unchanged
+        self.apply_topo()
+        log.info("Topo pattern: %s", path or "default")
+
+    def choose_topo(self) -> None:
+        from PySide6.QtWidgets import QFileDialog
+
+        path, _ = QFileDialog.getOpenFileName(self.window, "Choose Topo Pattern", str(Path.home()),
+                                              "SVG images (*.svg)")
+        if path:
+            self.set_topo_svg(path)
 
     def set_speed(self, value: int) -> None:
         self.engine.set_speed(value)

@@ -10,10 +10,11 @@ import os
 import signal
 import sys
 import time
+from pathlib import Path
 from typing import Any, Dict, List, Optional
 
 from PySide6.QtCore import QLockFile, QObject, QTimer, QUrl, Signal
-from PySide6.QtGui import QColor, QDesktopServices, QPalette
+from PySide6.QtGui import QColor, QDesktopServices, QIcon, QPalette
 from PySide6.QtWidgets import QApplication, QMessageBox
 
 from .. import APP_NAME, BUNDLE_ID, __version__
@@ -27,6 +28,7 @@ from ..settings import paths
 from ..settings.store import Settings
 
 log = logging.getLogger("apc.app")
+ASSETS = Path(__file__).resolve().parents[1] / "assets"
 
 
 # ----------------------------------------------------------------------------
@@ -495,6 +497,9 @@ def main(argv: Optional[List[str]] = None) -> int:
     QApplication.setApplicationVersion(__version__)
     app = QApplication(sys.argv[:1])
     app.setStyle("Fusion")
+    icon_path = ASSETS / "AppIcon-256.png"
+    if icon_path.exists():
+        app.setWindowIcon(QIcon(str(icon_path)))  # Dock icon when run from source
     app.setPalette(_dark_palette())
     from ..ui import theme
 

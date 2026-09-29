@@ -2,10 +2,11 @@
 
 from __future__ import annotations
 
+from pathlib import Path
 from typing import Optional
 
 from PySide6.QtCore import QByteArray, Qt, QTimer, Signal
-from PySide6.QtGui import QAction, QKeySequence
+from PySide6.QtGui import QAction, QKeySequence, QPixmap
 from PySide6.QtWidgets import (
     QCheckBox, QComboBox, QFrame, QHBoxLayout, QLabel, QMainWindow, QPushButton, QScrollArea, QSplitter,
     QVBoxLayout, QWidget,
@@ -112,10 +113,14 @@ class MainWindow(QMainWindow):
         lay.setContentsMargins(18, 0, 14, 0)
         lay.setSpacing(10)
         logo = QLabel()
-        logo.setFixedSize(22, 22)
-        logo.setStyleSheet(
-            "background: qlineargradient(x1:0,y1:0,x2:1,y2:1, stop:0 #ff3b3b, stop:0.35 #ffb020,"
-            " stop:0.65 #39d98a, stop:1 #3b7bff); border-radius: 5px;")
+        logo.setFixedSize(30, 30)
+        icon = Path(__file__).resolve().parents[1] / "assets" / "AppIcon-256.png"
+        pm = QPixmap(str(icon))
+        if not pm.isNull():
+            dpr = self.devicePixelRatioF()
+            pm = pm.scaled(int(30 * dpr), int(30 * dpr), Qt.KeepAspectRatio, Qt.SmoothTransformation)
+            pm.setDevicePixelRatio(dpr)
+            logo.setPixmap(pm)
         lay.addWidget(logo)
         titles = QVBoxLayout()
         titles.setSpacing(0)

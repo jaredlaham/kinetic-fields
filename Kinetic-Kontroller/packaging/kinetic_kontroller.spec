@@ -20,7 +20,7 @@ a = Analysis(
     [os.path.join(ROOT, "main.py")],
     pathex=[ROOT],
     binaries=[],
-    datas=[(os.path.join(ROOT, "apc_light", "assets"), "apc_light/assets")],
+    datas=[(os.path.join(ROOT, "apc_light", "assets", "AppIcon-256.png"), "apc_light/assets")],
     hiddenimports=hiddenimports,
     hookspath=[],
     runtime_hooks=[],

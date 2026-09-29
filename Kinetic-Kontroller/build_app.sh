@@ -64,22 +64,11 @@ if [[ "$RUN_TESTS" == 1 ]]; then
 fi
 
 # ------------------------------------------------------------------ icon ----
+# apc_light/assets/AppIcon.icns is committed; regenerate it from the source art
+# with:  pip install pillow numpy scipy && python tools/make_icon.py
+export APC_ICON="$PROJECT_DIR/apc_light/assets/AppIcon.icns"
+[[ -f "$APC_ICON" ]] || die "Missing $APC_ICON"
 mkdir -p build
-ICON_PNG="build/icon_1024.png"
-QT_QPA_PLATFORM=offscreen "$VPY" tools/make_icon.py "$ICON_PNG" >/dev/null
-export APC_ICON=""
-if [[ "$(uname)" == "Darwin" ]]; then
-  say "Creating app icon"
-  ICONSET="build/AppIcon.iconset"
-  rm -rf "$ICONSET"; mkdir -p "$ICONSET"
-  for s in 16 32 128 256 512; do
-    sips -z $s $s "$ICON_PNG" --out "$ICONSET/icon_${s}x${s}.png" >/dev/null
-    d=$((s * 2))
-    sips -z $d $d "$ICON_PNG" --out "$ICONSET/icon_${s}x${s}@2x.png" >/dev/null
-  done
-  iconutil -c icns "$ICONSET" -o build/AppIcon.icns
-  export APC_ICON="$PROJECT_DIR/build/AppIcon.icns"
-fi
 
 # ----------------------------------------------------------------- build ----
 say "Building with PyInstaller"
@@ -97,6 +86,10 @@ if [[ "$(uname)" == "Darwin" ]]; then
   say "Signing (ad-hoc) and verifying"
   codesign --force --deep --sign - "$APP_PATH"
   codesign --verify --deep --strict "$APP_PATH" && echo "signature OK"
+
+  ICNS="$(/usr/libexec/PlistBuddy -c 'Print :CFBundleIconFile' "$APP_PATH/Contents/Info.plist" 2>/dev/null || true)"
+  [[ -n "$ICNS" && -f "$APP_PATH/Contents/Resources/$ICNS" ]] || die "App icon missing from bundle"
+  echo "Icon: $ICNS ($(sips -g pixelWidth "$APP_PATH/Contents/Resources/$ICNS" | awk '/pixelWidth/{print $2}') px)"
 
   ARCHS="$(lipo -archs "$BIN" 2>/dev/null || file "$BIN")"
   echo "Architecture: $ARCHS"

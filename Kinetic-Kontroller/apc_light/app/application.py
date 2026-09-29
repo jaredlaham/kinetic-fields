@@ -40,7 +40,7 @@ def setup_logging(debug: bool):
     root.propagate = False
     fmt = logging.Formatter("%(asctime)s %(levelname)-7s [%(threadName)s] %(name)s: %(message)s")
     try:
-        fh = logging.handlers.RotatingFileHandler(paths.log_dir() / "apc-light-controller.log",
+        fh = logging.handlers.RotatingFileHandler(paths.log_dir() / "kinetic-kontroller.log",
                                                   maxBytes=1_000_000, backupCount=3, encoding="utf-8")
         fh.setFormatter(fmt)
         root.addHandler(fh)
@@ -474,7 +474,7 @@ def _dark_palette() -> QPalette:
 
 
 def parse_args(argv: List[str]) -> argparse.Namespace:
-    p = argparse.ArgumentParser(prog="apc-light-controller", description=APP_NAME)
+    p = argparse.ArgumentParser(prog="kinetic-kontroller", description=APP_NAME)
     p.add_argument("--debug", action="store_true", help="verbose logging to the terminal")
     p.add_argument("--fake-midi", action="store_true", help="simulate an APC mini mk2 (no hardware needed)")
     p.add_argument("--self-test", type=float, metavar="SECONDS", default=0,
@@ -508,7 +508,7 @@ def main(argv: Optional[List[str]] = None) -> int:
     if not lock.tryLock(100):
         log.warning("Another instance is already running")
         if not args.self_test:
-            QMessageBox.information(None, APP_NAME, "APC Light Controller is already running.")
+            QMessageBox.information(None, APP_NAME, "Kinetic Kontroller is already running.")
         return 1
 
     ctl = Controller(args, log_handler)

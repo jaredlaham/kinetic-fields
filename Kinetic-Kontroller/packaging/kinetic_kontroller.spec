@@ -1,5 +1,5 @@
 # -*- mode: python ; coding: utf-8 -*-
-# PyInstaller spec for "APC Light Controller.app" (onedir, windowed).
+# PyInstaller spec for "Kinetic Kontroller.app" (onedir, windowed).
 # Build with ./build_app.sh rather than calling this directly.
 
 import os

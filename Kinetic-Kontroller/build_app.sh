@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Build "APC Light Controller.app" into dist/.
+# Build "Kinetic Kontroller.app" into dist/.
 #
 #   ./build_app.sh                 build, test, then ask about /Applications
 #   ./build_app.sh --install       ...and copy to /Applications without asking
@@ -13,7 +13,7 @@ set -euo pipefail
 
 cd "$(dirname "$0")"
 PROJECT_DIR="$(pwd)"
-APP_NAME="APC Light Controller"
+APP_NAME="Kinetic Kontroller"
 APP_PATH="dist/${APP_NAME}.app"
 VENV="${VENV:-.venv}"
 INSTALL="ask"
@@ -86,7 +86,7 @@ say "Building with PyInstaller"
 rm -rf "dist/${APP_NAME}" "$APP_PATH"
 "$VPY" -m PyInstaller --noconfirm --clean \
   --distpath dist --workpath build/pyinstaller \
-  packaging/apc_light_controller.spec
+  packaging/kinetic_kontroller.spec
 
 if [[ "$(uname)" == "Darwin" ]]; then
   [[ -d "$APP_PATH" ]] || die "Build finished but $APP_PATH is missing"

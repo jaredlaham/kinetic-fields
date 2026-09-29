@@ -18,7 +18,7 @@ from typing import Callable, List, Optional, Protocol, Sequence
 
 log = logging.getLogger("apc.midi")
 
-CLIENT_NAME = "APC Light Controller"
+CLIENT_NAME = "Kinetic Kontroller"
 _APC_RE = re.compile(r"apc\s*mini\s*mk\s*2", re.I)
 
 

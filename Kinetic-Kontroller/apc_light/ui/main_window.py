@@ -30,7 +30,7 @@ class MainWindow(QMainWindow):
         super().__init__()
         self.ctl = ctl
         s = ctl.settings
-        self.setWindowTitle("APC Light Controller")
+        self.setWindowTitle("Kinetic Kontroller")
         self.setMinimumSize(1000, 640)
         self.resize(1180, 760)
 
@@ -119,7 +119,7 @@ class MainWindow(QMainWindow):
         lay.addWidget(logo)
         titles = QVBoxLayout()
         titles.setSpacing(0)
-        t = QLabel("APC LIGHT CONTROLLER")
+        t = QLabel("KINETIC KONTROLLER")
         t.setObjectName("AppTitle")
         sub = QLabel("LED console for Akai APC mini mk2")
         sub.setObjectName("AppSub")

@@ -1,9 +1,9 @@
 """Standard per-user locations.
 
-macOS:  ~/Library/Application Support/APC Light Controller/settings.json
-        ~/Library/Application Support/APC Light Controller/effects/  (user effects)
-        ~/Library/Logs/APC Light Controller/apc-light-controller.log
-Linux:  ~/.config/apc-light-controller/ and ~/.cache/apc-light-controller/logs
+macOS:  ~/Library/Application Support/Kinetic Kontroller/settings.json
+        ~/Library/Application Support/Kinetic Kontroller/effects/  (user effects)
+        ~/Library/Logs/Kinetic Kontroller/kinetic-kontroller.log
+Linux:  ~/.config/kinetic-kontroller/ and ~/.cache/kinetic-kontroller/logs
 Override everything with the APC_LIGHT_HOME environment variable (tests).
 """
 
@@ -29,7 +29,7 @@ def support_dir() -> Path:
         elif sys.platform.startswith("win"):
             base = Path(os.environ.get("APPDATA", Path.home())) / APP_NAME
         else:
-            base = Path(os.environ.get("XDG_CONFIG_HOME", Path.home() / ".config")) / "apc-light-controller"
+            base = Path(os.environ.get("XDG_CONFIG_HOME", Path.home() / ".config")) / "kinetic-kontroller"
     base.mkdir(parents=True, exist_ok=True)
     return base
 

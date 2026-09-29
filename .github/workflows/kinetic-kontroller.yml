@@ -1,15 +1,15 @@
-name: APC Light Controller
+name: Kinetic Kontroller
 
 on:
   push:
-    paths: ["APC-Light-Controller/**", ".github/workflows/apc-light-controller.yml"]
+    paths: ["Kinetic-Kontroller/**", ".github/workflows/kinetic-kontroller.yml"]
   pull_request:
-    paths: ["APC-Light-Controller/**", ".github/workflows/apc-light-controller.yml"]
+    paths: ["Kinetic-Kontroller/**", ".github/workflows/kinetic-kontroller.yml"]
   workflow_dispatch:
 
 defaults:
   run:
-    working-directory: APC-Light-Controller
+    working-directory: Kinetic-Kontroller
 
 jobs:
   test-linux:
@@ -39,7 +39,7 @@ jobs:
           .venv/bin/python tools/virtual_apc.py --seconds 18 --unplug-at 4 --replug-at 6 --report build/vapc.json &
           VPID=$!
           sleep 1.5
-          BIN="dist/APC Light Controller.app/Contents/MacOS/APC Light Controller"
+          BIN="dist/Kinetic Kontroller.app/Contents/MacOS/Kinetic Kontroller"
           env -i HOME="$HOME" PATH=/usr/bin:/bin "$BIN" --debug --self-test 11 > build/e2e.log 2>&1 || { cat build/e2e.log; exit 1; }
           wait $VPID
           grep '^SELF-TEST' build/e2e.log
@@ -59,18 +59,20 @@ jobs:
 
       - name: Launch via LaunchServices (like double-clicking in Finder)
         run: |
-          open "dist/APC Light Controller.app"
+          open "dist/Kinetic Kontroller.app"
           sleep 6
-          pgrep -fl "APC Light Controller.app/Contents/MacOS" 
-          osascript -e 'tell application "APC Light Controller" to quit'
-          sleep 3
-          ! pgrep -f "APC Light Controller.app/Contents/MacOS"
+          pgrep -fl "Kinetic Kontroller.app/Contents/MacOS" 
+          # Qt 6 answers the quit Apple Event with "cancel" (-128) and then quits
+          # on its own, so judge success by the process exiting.
+          osascript -e 'tell application "Kinetic Kontroller" to quit' || true
+          for i in $(seq 1 20); do pgrep -f "Kinetic Kontroller.app/Contents/MacOS" >/dev/null || break; sleep 0.5; done
+          ! pgrep -f "Kinetic Kontroller.app/Contents/MacOS"
 
       - name: Zip
-        run: ditto -c -k --keepParent "dist/APC Light Controller.app" "dist/APC-Light-Controller-macOS-arm64.zip"
+        run: ditto -c -k --keepParent "dist/Kinetic Kontroller.app" "dist/Kinetic-Kontroller-macOS-arm64.zip"
 
       - uses: actions/upload-artifact@v4
         with:
-          name: APC-Light-Controller-macOS-arm64
-          path: APC-Light-Controller/dist/APC-Light-Controller-macOS-arm64.zip
+          name: Kinetic-Kontroller-macOS-arm64
+          path: Kinetic-Kontroller/dist/Kinetic-Kontroller-macOS-arm64.zip
           retention-days: 30

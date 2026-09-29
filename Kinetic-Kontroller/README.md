@@ -1,4 +1,4 @@
-# APC Light Controller
+# Kinetic Kontroller
 
 A native-feeling macOS app for controlling the LEDs on an **Akai APC mini mk2**. Pick a
 scene from the library and the pads change right away. Only one effect ever drives the
@@ -16,11 +16,11 @@ LEDs at a time, and **BLACKOUT** (or the `0` key) turns everything off.
 ## Install
 
 ```bash
-cd APC-Light-Controller
-./build_app.sh            # builds dist/APC Light Controller.app, then offers to copy it to /Applications
+cd Kinetic-Kontroller
+./build_app.sh            # builds dist/Kinetic Kontroller.app, then offers to copy it to /Applications
 ```
 
-Or drag `dist/APC Light Controller.app` into Applications yourself. The app bundles its own
+Or drag `dist/Kinetic Kontroller.app` into Applications yourself. The app bundles its own
 Python and Qt. It does not need Homebrew, this virtual environment, or anything on your `$PATH`.
 
 The build targets your Mac's architecture: **arm64** on Apple Silicon, **x86_64** on Intel.
@@ -28,9 +28,9 @@ The script prints which one it built. A universal build needs a universal2 Pytho
 (python.org installer): `TARGET_ARCH=universal2 PYTHON=/usr/local/bin/python3.12 ./build_app.sh`.
 
 A prebuilt arm64 `.app` is also attached to every GitHub Actions run of the
-**APC Light Controller** workflow, as the artifact `APC-Light-Controller-macOS-arm64`. It is
+**Kinetic Kontroller** workflow, as the artifact `Kinetic-Kontroller-macOS-arm64`. It is
 ad-hoc signed, so macOS quarantines a downloaded copy. Either right-click → **Open** the first
-time, or run `xattr -dr com.apple.quarantine "/Applications/APC Light Controller.app"`.
+time, or run `xattr -dr com.apple.quarantine "/Applications/Kinetic Kontroller.app"`.
 A copy you build yourself doesn't have this problem.
 
 ## Development
@@ -44,9 +44,9 @@ QT_QPA_PLATFORM=offscreen .venv/bin/python -m pytest -q tests
 
 | Where | What |
 |---|---|
-| `~/Library/Application Support/APC Light Controller/settings.json` | favorites, speed, brightness, last scene, MIDI port, per-scene settings |
-| `~/Library/Application Support/APC Light Controller/effects/` | your own effects (see below), no rebuild needed |
-| `~/Library/Logs/APC Light Controller/` | log files (also shown in the Diagnostics panel) |
+| `~/Library/Application Support/Kinetic Kontroller/settings.json` | favorites, speed, brightness, last scene, MIDI port, per-scene settings |
+| `~/Library/Application Support/Kinetic Kontroller/effects/` | your own effects (see below), no rebuild needed |
+| `~/Library/Logs/Kinetic Kontroller/` | log files (also shown in the Diagnostics panel) |
 
 ## Keyboard
 
@@ -98,7 +98,7 @@ class Sparkle(Effect):
 - Helpers in `apc_light.engine.frame`: `hsv(h, s, v)`, `lerp(a, b, t)`, `scale(rgb, k)`.
 
 In the built app, drop the same kind of file into
-`~/Library/Application Support/APC Light Controller/effects/` and restart the app. A broken
+`~/Library/Application Support/Kinetic Kontroller/effects/` and restart the app. A broken
 effect file is skipped and logged. It never stops the app.
 
 ## How it works

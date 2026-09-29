@@ -40,15 +40,13 @@ def open_port():
     port.open_virtual_port("APC mini mk2 Control")
     out = rtmidi.MidiOut(name="Virtual APC")
     out.open_virtual_port("APC mini mk2 Control")
-    port.pad_out = out
-    return port
+    return (port, out)
 
 
-def close_port(port):
-    port.pad_out.close_port()
-    port.pad_out.delete()
-    port.close_port()
-    port.delete()
+def close_port(ports):
+    for p in reversed(ports):
+        p.close_port()
+        p.delete()
 
 
 port = open_port()
@@ -66,9 +64,9 @@ while time.time() - start < a.seconds:
         print(f"replugged at {t:.1f}s", flush=True)
     if a.press_every and port is not None and t > 1.0 and int(t / a.press_every) != int((t - 0.05) / a.press_every):
         note = (pads_sent * 11) % 64
-        port.pad_out.send_message([0x90, note, 127])
+        port[1].send_message([0x90, note, 127])
         time.sleep(0.02)
-        port.pad_out.send_message([0x80, note, 0])
+        port[1].send_message([0x80, note, 0])
         pads_sent += 1
     time.sleep(0.05)
 

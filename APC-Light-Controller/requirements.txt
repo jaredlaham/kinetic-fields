@@ -1,0 +1,2 @@
+PySide6-Essentials>=6.6,<7
+python-rtmidi>=1.5,<2

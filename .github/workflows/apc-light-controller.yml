@@ -1,0 +1,76 @@
+name: APC Light Controller
+
+on:
+  push:
+    paths: ["APC-Light-Controller/**", ".github/workflows/apc-light-controller.yml"]
+  pull_request:
+    paths: ["APC-Light-Controller/**", ".github/workflows/apc-light-controller.yml"]
+  workflow_dispatch:
+
+defaults:
+  run:
+    working-directory: APC-Light-Controller
+
+jobs:
+  test-linux:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: { python-version: "3.12" }
+      - name: Qt runtime libraries
+        run: sudo apt-get update -q && sudo apt-get install -y -q libegl1 libgl1 libxkbcommon0 libfontconfig1 libdbus-1-3
+      - run: pip install -r requirements-dev.txt
+      - run: QT_QPA_PLATFORM=offscreen python -m pytest -q tests
+
+  build-macos:
+    runs-on: macos-14   # Apple Silicon (arm64)
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: { python-version: "3.12" }
+
+      - name: Build, test and package the .app
+        run: PYTHON="$(which python)" ./build_app.sh --no-install
+
+      - name: End-to-end over real CoreMIDI (virtual APC, unplug + replug)
+        run: |
+          set -euo pipefail
+          .venv/bin/python tools/virtual_apc.py --seconds 18 --unplug-at 4 --replug-at 6 --report build/vapc.json &
+          VPID=$!
+          sleep 1.5
+          BIN="dist/APC Light Controller.app/Contents/MacOS/APC Light Controller"
+          env -i HOME="$HOME" PATH=/usr/bin:/bin "$BIN" --debug --self-test 11 > build/e2e.log 2>&1 || { cat build/e2e.log; exit 1; }
+          wait $VPID
+          grep '^SELF-TEST' build/e2e.log
+          cat build/vapc.json
+          grep -E "APC Mini detected|APC disconnected|APC reconnected|Blackout" build/e2e.log | tail -20
+          grep -q "APC reconnected" build/e2e.log
+          python - <<'PY'
+          import json
+          r = json.load(open("build/vapc.json"))
+          assert r["max_lit"] > 0, r
+          assert r["dark_at_end"], r
+          e2e = [l for l in open("build/e2e.log") if l.startswith("SELF-TEST ")][0]
+          rep = json.loads(e2e[len("SELF-TEST "):])
+          assert rep["ok"] and rep["rtmidi_available"], rep
+          print("E2E OK")
+          PY
+
+      - name: Launch via LaunchServices (like double-clicking in Finder)
+        run: |
+          open "dist/APC Light Controller.app"
+          sleep 6
+          pgrep -fl "APC Light Controller.app/Contents/MacOS" 
+          osascript -e 'tell application "APC Light Controller" to quit'
+          sleep 3
+          ! pgrep -f "APC Light Controller.app/Contents/MacOS"
+
+      - name: Zip
+        run: ditto -c -k --keepParent "dist/APC Light Controller.app" "dist/APC-Light-Controller-macOS-arm64.zip"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: APC-Light-Controller-macOS-arm64
+          path: APC-Light-Controller/dist/APC-Light-Controller-macOS-arm64.zip
+          retention-days: 30

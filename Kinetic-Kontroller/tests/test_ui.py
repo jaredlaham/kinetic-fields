@@ -160,3 +160,25 @@ def test_scene_buttons_and_digit_keys_still_work(ctl):
     assert ctl.engine.active_id == "kinetic_sweep"
     assert ctl.handle_key("3") and ctl.engine.active_id == "mosaic"
     assert ctl.handle_key("0") and ctl.engine.active_id is None
+
+
+@pytest.mark.parametrize("size", [(900, 800), (620, 760), (1300, 700)])
+def test_pads_are_5_to_4_with_equal_gutters(qapp, size):
+    from PySide6.QtCore import QPointF
+
+    from apc_light.ui.apc_view import PAD_ASPECT, ApcView
+
+    v = ApcView()
+    v.resize(*size)
+    _, grid, pitch = v._geometry()
+    rects = {(x, y): v._pad_rect(x, y, grid, pitch) for x in range(8) for y in range(8)}
+    for r in rects.values():
+        assert abs(r.width() / r.height() - PAD_ASPECT) < 1e-9
+    h_gaps = {round(rects[(x + 1, y)].left() - rects[(x, y)].right(), 6) for x in range(7) for y in range(8)}
+    v_gaps = {round(rects[(x, y + 1)].top() - rects[(x, y)].bottom(), 6) for x in range(8) for y in range(7)}
+    assert len(h_gaps) == 1 and h_gaps == v_gaps and h_gaps.pop() > 0
+    # clicks land on the right pad, including in the gutters
+    for (x, y), r in rects.items():
+        assert v._hit(r.center()) == (x, y)
+    gutter_pt = QPointF(rects[(3, 3)].right() + 0.4, rects[(3, 3)].center().y())
+    assert v._hit(gutter_pt) == (3, 3)

@@ -26,7 +26,18 @@ from ..engine.frame import OFF, Pad
 # Seconds per cycle for the hardware pulse/blink rates (APC internal 120 BPM).
 _RATE_SECONDS = {"1/2": 1.0, "1/4": 0.5, "1/8": 0.25, "1/16": 0.125, "1/24": 0.0833}
 
-# Device proportions, in pad pitches.
+# Pad geometry. Proportions below are in units of the column pitch
+# (pad width + gutter). Pads are 5:4 (1.25:1, wider than tall) and the gutter
+# between pads is the same horizontally and vertically.
+PAD_ASPECT = 1.25
+_GUTTER = 0.13                     # gap between pads (both directions)
+_PAD_W = 1.0 - _GUTTER             # pad width
+_PAD_H = _PAD_W / PAD_ASPECT       # pad height
+_ROW = _PAD_H + _GUTTER            # row pitch
+_GRID_W = 8 - _GUTTER              # outer size of the 8x8 grid
+_GRID_H = 8 * _ROW - _GUTTER
+
+# Device proportions.
 _WOOD = 0.78          # side panel width
 _PLATE_PAD_X = 0.55   # faceplate margin left of the grid
 _TOP = 1.05           # logo band above the grid
@@ -35,7 +46,7 @@ _TRACK = 0.95         # track-button row
 _FADERS = 2.55        # fader area
 _BOTTOM = 0.45
 _UNITS_W = _WOOD * 2 + _PLATE_PAD_X + 8 + _SCENE + 0.2
-_UNITS_H = _TOP + 8 + _TRACK + _FADERS + _BOTTOM
+_UNITS_H = _TOP + _GRID_H + _TRACK + _FADERS + _BOTTOM
 _HEIGHT_SHARE = 0.72  # of the canvas height (generous negative space)
 
 
@@ -114,13 +125,14 @@ class ApcView(QWidget):
         return body, grid, pitch
 
     def _pad_rect(self, x: int, y: int, grid: QPointF, pitch: float) -> QRectF:
-        gap = pitch * 0.13
-        return QRectF(grid.x() + x * pitch + gap / 2, grid.y() + y * pitch + gap / 2, pitch - gap, pitch - gap)
+        """Pad (x, y); ``grid`` is the top-left corner of pad (0, 0)."""
+        return QRectF(grid.x() + x * pitch, grid.y() + y * _ROW * pitch, _PAD_W * pitch, _PAD_H * pitch)
 
     def _hit(self, pos) -> Optional[tuple]:
         _, grid, pitch = self._geometry()
-        x = int((pos.x() - grid.x()) // pitch)
-        y = int((pos.y() - grid.y()) // pitch)
+        g = _GUTTER * pitch / 2  # split each gutter between its neighbours
+        x = int((pos.x() - grid.x() + g) // pitch)
+        y = int((pos.y() - grid.y() + g) // (_ROW * pitch))
         return (x, y) if 0 <= x < 8 and 0 <= y < 8 else None
 
     # -- static body (cached) -----------------------------------------------------------
@@ -218,7 +230,9 @@ class ApcView(QWidget):
                    "APC mini mk2")
 
         # recessed pad well
-        well = QRectF(grid.x() - pitch * 0.12, grid.y() - pitch * 0.12, pitch * 8.24, pitch * 8.24)
+        # the well's inner margin equals the pad gutter
+        m = _GUTTER * pitch
+        well = QRectF(grid.x() - m, grid.y() - m, _GRID_W * pitch + 2 * m, _GRID_H * pitch + 2 * m)
         p.setBrush(QColor("#121315"))
         p.setPen(QPen(QColor(0, 0, 0, 200), 1))
         p.drawRoundedRect(well, pitch * 0.14, pitch * 0.14)
@@ -226,9 +240,9 @@ class ApcView(QWidget):
         p.drawLine(QPointF(well.left() + 3, well.bottom() + 0.5), QPointF(well.right() - 3, well.bottom() + 0.5))
 
         # track buttons (red) + shift
-        ty = grid.y() + pitch * 8 + pitch * 0.28
+        ty = grid.y() + _GRID_H * pitch + pitch * 0.34
         for i in range(9):
-            r = QRectF(grid.x() + i * pitch + pitch * 0.14, ty, pitch * 0.72, pitch * 0.36)
+            r = QRectF(grid.x() + i * pitch + _PAD_W * pitch * 0.08, ty, _PAD_W * pitch * 0.84, pitch * 0.36)
             red = i < 8
             gg = QLinearGradient(r.topLeft(), r.bottomLeft())
             gg.setColorAt(0, QColor("#E2463C" if red else "#8E9196"))
@@ -243,7 +257,7 @@ class ApcView(QWidget):
         fy = ty + pitch * _TRACK * 0.72
         fh = pitch * (_FADERS - 0.35)
         for i in range(9):
-            cx = grid.x() + i * pitch + pitch * 0.5
+            cx = grid.x() + i * pitch + _PAD_W * pitch / 2
             well_r = QRectF(cx - pitch * 0.34, fy, pitch * 0.68, fh)
             p.setBrush(QColor("#161719"))
             p.setPen(QPen(QColor(0, 0, 0, 180), 1))
@@ -283,7 +297,7 @@ class ApcView(QWidget):
         now = time.monotonic()
 
         # connection LED on the faceplate
-        led = QPointF(grid.x() + pitch * 8.62, body.top() + pitch * 0.5)
+        led = QPointF(grid.x() + pitch * (8 + _PAD_W / 2), body.top() + pitch * 0.5)
         p.setPen(Qt.NoPen)
         p.setBrush(QColor("#3CC261") if self._connected else QColor("#3A1E1E"))
         p.drawEllipse(led, pitch * 0.055, pitch * 0.055)
@@ -340,7 +354,8 @@ class ApcView(QWidget):
         # scene launch buttons (grey caps, green LED when lit)
         for i in range(8):
             pr = self._pad_rect(8, i, grid, pitch)
-            r = QRectF(pr.left() + pitch * 0.2, pr.top() + pitch * 0.12, pitch * 0.62, pr.height() - pitch * 0.24)
+            r = QRectF(pr.left() + pitch * 0.14, pr.top() + pitch * 0.08, pr.width() - pitch * 0.28,
+                       pr.height() - pitch * 0.16)
             on = self._scene_led == i
             g = QLinearGradient(r.topLeft(), r.bottomLeft())
             if on:

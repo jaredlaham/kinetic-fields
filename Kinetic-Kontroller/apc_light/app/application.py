@@ -178,8 +178,15 @@ class Controller(QObject):
         eff.pop("0", None)  # 0 is always Blackout
         return eff
 
+    @property
+    def shown_id(self) -> Optional[str]:
+        return self._shown_id
+
     def library_state(self) -> None:
-        self.window.library.set_state(self.settings["favorites"], self.shortcuts(), self.engine.active_id)
+        ui = self.settings["ui_state"]
+        self.window.library.set_state(self.settings["favorites"], self.shortcuts(), self.engine.active_id,
+                                      ui.get("collapsed", []))
+        self.window.inspector.set_shortcuts(self.shortcuts())
 
     def favorite_ids(self) -> List[str]:
         return [f for f in self.settings["favorites"] if f in self.registry]
@@ -193,13 +200,119 @@ class Controller(QObject):
 
     # -- actions (GUI thread) --------------------------------------------------
     def start_effect(self, effect_id: str) -> None:
+        if self.engine.paused:
+            self.set_paused(False)
         if self.engine.set_effect(effect_id):
             self._shown_id = effect_id
             self.settings["last_effect"] = effect_id
             self.save_soon()
 
     def blackout(self) -> None:
+        if self.engine.paused:
+            self.set_paused(False)
         self.engine.blackout()
+
+    # -- transport ---------------------------------------------------------------
+    def play(self) -> None:
+        """Resume if paused, otherwise (re)start the selected scene."""
+        if self.engine.paused:
+            self.set_paused(False)
+        elif self._shown_id and self.engine.active_id != self._shown_id:
+            self.start_effect(self._shown_id)
+        elif self.engine.active_id is None and self._shown_id:
+            self.start_effect(self._shown_id)
+
+    def set_paused(self, paused: bool) -> None:
+        if paused and self.engine.active_id is None:
+            paused = False
+        self.engine.set_paused(paused)
+        log.info("Animation %s", "paused" if paused else "resumed")
+        self.window.set_paused(paused)
+
+    def step_effect(self, delta: int) -> None:
+        """Previous / next scene in browser order."""
+        ids = self.window.library.list.visible_effects() or self.registry.ids()
+        seen = []
+        for i in ids:  # favourites appear twice in the browser; step through unique scenes
+            if i not in seen:
+                seen.append(i)
+        cur = self._shown_id if self._shown_id in seen else None
+        idx = (seen.index(cur) + delta) % len(seen) if cur else (0 if delta > 0 else len(seen) - 1)
+        self.start_effect(seen[idx])
+
+    def toggle_favorite(self, effect_id: Optional[str]) -> None:
+        if not effect_id:
+            return
+        favs = list(self.settings["favorites"])
+        if effect_id in favs:
+            favs.remove(effect_id)
+        else:
+            favs.append(effect_id)
+        self.set_favorites(favs)
+
+    # -- patterns library / notes / UI state ------------------------------------
+    def save_pattern(self) -> None:
+        from ..ui.browser import pattern_name_dialog
+
+        params = self.engine.params_for("custom_pattern")
+        pattern = params.get("pattern")
+        if not pattern:
+            return
+        n = len(self.settings["patterns"]) + 1
+        name = pattern_name_dialog(self.window, f"Pattern {n}")
+        if not name:
+            return
+        self.settings["patterns"] = {**self.settings["patterns"], name: list(pattern)}
+        self.save_soon()
+        self.window.library.patterns.set_patterns(self.settings["patterns"])
+        self.window.library.set_tab("Patterns")
+        log.info("Saved pattern: %s", name)
+
+    def load_pattern(self, name: str) -> None:
+        pattern = self.settings["patterns"].get(name)
+        if not pattern:
+            return
+        self.engine.set_params("custom_pattern", {"pattern": pattern})
+        self._store_params("custom_pattern")
+        self.start_effect("custom_pattern")
+        self.window.refresh_params()
+        log.info("Loaded pattern: %s", name)
+
+    def delete_pattern(self, name: str) -> None:
+        pats = dict(self.settings["patterns"])
+        if pats.pop(name, None) is not None:
+            self.settings["patterns"] = pats
+            self.save_soon()
+            self.window.library.patterns.set_patterns(pats)
+
+    def set_notes(self, text: str) -> None:
+        self.settings["notes"] = text
+        self.save_soon()
+
+    def set_ui_state(self, key: str, value) -> None:
+        self.settings["ui_state"] = {**self.settings["ui_state"], key: value}
+        self.save_soon()
+
+    def add_effect(self) -> None:
+        """Create a new effect file from the template in the user effects folder."""
+
+        src = Path(__file__).resolve().parents[1] / "effects" / "_template.py"
+        folder = paths.user_effects_dir()
+        n = 1
+        while (folder / f"my_effect_{n}.py").exists():
+            n += 1
+        dest = folder / f"my_effect_{n}.py"
+        try:
+            text = src.read_text("utf-8") if src.exists() else ""
+            dest.write_text(text.replace('name = "My Effect"', f'name = "My Effect {n}"'), "utf-8")
+        except OSError as exc:
+            log.error("Could not create %s: %s", dest, exc)
+            return
+        log.info("Created %s — edit it, then restart Kinetic Kontroller to load it", dest)
+        QMessageBox.information(self.window, "Add Effect",
+                                f"Created {dest.name} in your effects folder.\n\n"
+                                "Edit it in any text editor, then restart Kinetic Kontroller to load it.")
+        QDesktopServices.openUrl(QUrl.fromLocalFile(str(folder)))
 
     def set_speed(self, value: int) -> None:
         self.engine.set_speed(value)
@@ -214,7 +327,7 @@ class Controller(QObject):
     def set_output_mode(self, mode: str) -> None:
         log.info("LED output mode: %s", mode)
         self.engine.set_output_mode(mode)
-        self.window.mode.set_value("RGB" if mode == "rgb" else "Palette")
+        self.window.set_output_mode(mode)
         self.settings["output_mode"] = mode
         self.save_soon()
 
@@ -251,12 +364,29 @@ class Controller(QObject):
         self.window.refresh_params()
 
     def screen_pad(self, x: int, y: int, pressed: bool, button: str = "left") -> None:
-        """A pad clicked on the on-screen APC: treated like a hardware press."""
+        """A pad clicked on the on-screen APC: treated like a hardware press.
+        With a paintable effect the inspector's paint tool decides what it does."""
+        cls = self.registry.get(self.engine.active_id) if self.engine.active_id else None
+        if cls is not None and any(p.key == "pattern" for p in cls.params) and button != "right":
+            tool = self.window.inspector.paint_tool
+            if tool == "eyedropper":
+                if pressed:
+                    color = self.engine.params_for(cls.id)["pattern"][y * 8 + x]
+                    if color != "#000000":
+                        self.set_param(cls.id, "brush", color)
+                        self.window.inspector.set_brush(color)
+                    self.window.inspector.set_paint_tool("brush")
+                return
+            button = {"eraser": "right", "bucket": "fill"}.get(tool, "left")
         self.engine.post_input(PadEvent(x, y, pressed, 100 if pressed else 0, source="screen", button=button))
 
     def set_hardware_preview(self, enabled: bool) -> None:
+        if bool(enabled) == self.engine.preview_hardware and self.settings["hardware_preview"] == bool(enabled):
+            self.window.set_preview(bool(enabled))
+            return
         self.engine.set_preview_hardware(enabled)
         self.set_option("hardware_preview", bool(enabled))
+        self.window.set_preview(bool(enabled))
 
     def set_option(self, key: str, value: Any) -> None:
         self.settings[key] = value
@@ -268,6 +398,15 @@ class Controller(QObject):
         self.settings["favorites"] = favorites
         self.save_soon()
         self._update_scene_led()
+        self.library_state()
+        self.window.show_effect(self.engine.active_id, self._shown_id)
+
+    def clear_shortcut(self, key: str) -> None:
+        overrides = dict(self.settings["shortcuts"])
+        overrides[key] = ""
+        self.settings["shortcuts"] = overrides
+        self.save_soon()
+        self.library_state()
 
     def assign_shortcut(self, key: str, effect_id: str) -> None:
         overrides = dict(self.settings["shortcuts"])
@@ -503,14 +642,15 @@ _exit_code = [0]
 # entry point
 # ----------------------------------------------------------------------------
 def _dark_palette() -> QPalette:
-    from ..ui import theme
+    from ..ui.design import C
 
     pal = QPalette()
     for role, color in (
-        (QPalette.Window, theme.BG), (QPalette.WindowText, theme.TEXT), (QPalette.Base, theme.PANEL_2),
-        (QPalette.AlternateBase, theme.PANEL), (QPalette.Text, theme.TEXT), (QPalette.Button, theme.RAISED),
-        (QPalette.ButtonText, theme.TEXT), (QPalette.Highlight, theme.ACCENT), (QPalette.HighlightedText, "#000000"),
-        (QPalette.ToolTipBase, theme.RAISED), (QPalette.ToolTipText, theme.TEXT), (QPalette.PlaceholderText, theme.TEXT_FAINT),
+        (QPalette.Window, C.WORKSPACE), (QPalette.WindowText, C.TEXT), (QPalette.Base, C.FIELD),
+        (QPalette.AlternateBase, C.INSPECTOR), (QPalette.Text, C.TEXT), (QPalette.Button, C.CONTROL),
+        (QPalette.ButtonText, C.TEXT), (QPalette.Highlight, C.SELECT), (QPalette.HighlightedText, "#FFFFFF"),
+        (QPalette.ToolTipBase, C.CONTROL), (QPalette.ToolTipText, C.TEXT), (QPalette.PlaceholderText, C.TEXT_3),
+        (QPalette.Link, C.FOCUS),
     ):
         pal.setColor(role, QColor(color))
     return pal

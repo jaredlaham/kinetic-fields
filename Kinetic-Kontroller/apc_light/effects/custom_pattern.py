@@ -35,7 +35,18 @@ class CustomPattern(Effect):
     def on_pad_pressed(self, ctx, x, y, button):
         pattern = list(ctx.params["pattern"])
         i = y * 8 + x
-        if button == "right":
+        if button == "fill":  # flood-fill the same-coloured area around the pad
+            target, brush = pattern[i], ctx.params["brush"]
+            if target == brush:
+                return False
+            stack = [(x, y)]
+            while stack:
+                cx, cy = stack.pop()
+                j = cy * 8 + cx
+                if 0 <= cx < 8 and 0 <= cy < 8 and pattern[j] == target:
+                    pattern[j] = brush
+                    stack += [(cx + 1, cy), (cx - 1, cy), (cx, cy + 1), (cx, cy - 1)]
+        elif button == "right":
             pattern[i] = "#000000"
         elif button == "toggle":  # hardware pad: toggle paint/erase
             pattern[i] = "#000000" if pattern[i] != "#000000" else ctx.params["brush"]

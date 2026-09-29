@@ -12,7 +12,7 @@ LEDs at a time, and **BLACKOUT** (or the `0` key) turns everything off.
 - APC hardware: the 8 green **scene buttons** (right column, top = 1) start favorites 1–8, and
   **Shift + scene** blacks out. Out of the box, number key N, favorite N and scene button N are the
   same scene, with **Kinetic Sweep in #1**
-- Diagnostics panel in the app, so you never need Terminal
+- Live MIDI monitor and log in the app (Inspector ▸ MIDI), so you never need Terminal
 - LEDs stay off at launch unless you turn on "Start last scene at launch"
 
 ## Kinetic Sweep (interactive)
@@ -35,7 +35,7 @@ that pad:
   TOUCH: Reaction, Touch Intensity, Touch Decay (0.15–2 s), Velocity, Color Wake.
 - **Presets.** OXI, RETRO, NEON, AMBIENT, PERFORMANCE and ZEN. **RESET** restores the defaults.
 - **Velocity** is used subtly if the pads send it. APC mini mk2 pads usually send a fixed 127,
-  and that's handled gracefully. Diagnostics shows which one your unit does.
+  and that's handled gracefully. Inspector ▸ MIDI ▸ Monitor shows which one your unit does.
 - **Color Wake.** Touches briefly tint the sweep around them, and the tint drifts away from the pad.
 - **Best look.** Use **LED OUTPUT → RGB** for the smoothest fades. Palette mode works too; see below.
 
@@ -72,7 +72,31 @@ QT_QPA_PLATFORM=offscreen .venv/bin/python -m pytest -q tests
 |---|---|
 | `~/Library/Application Support/Kinetic Kontroller/settings.json` | favorites, speed, brightness, last scene, MIDI port, per-scene settings |
 | `~/Library/Application Support/Kinetic Kontroller/effects/` | your own effects (see below), no rebuild needed |
-| `~/Library/Logs/Kinetic Kontroller/` | log files (also shown in the Diagnostics panel) |
+| `~/Library/Logs/Kinetic Kontroller/` | log files (also shown in Inspector ▸ MIDI ▸ Log) |
+
+## Interface
+
+```
+┌ toolbar: app · ⏮ ■ ▶ ❚❚ ⏭ transport · ↻ · ● connection · MIDI IN/OUT meters · ⚙ ┐
+├ Browser ─────────┬ Workspace ─────────────────────────┬ Inspector ──────────────────┤
+│ Effects/Patterns │ view · scene name · ☆ … · ▶ ■      │ Pattern│Colors│Behavior│MIDI │
+│ /Notes, search,  │                                    │ ▾ PLAYBACK  ▾ PAINT TOOLS   │
+│ ▾ FAVORITES …    │          APC mini visualizer       │ ▾ LED OUTPUT …              │
+│                  │                                    │ [ BLACKOUT ]                │
+└ status: ● Ready ─┴─────────────────── fps · MIDI msgs · mode · brightness · version ┘
+```
+
+- **Transport:** ⏮/⏭ previous/next scene · ■ stop (blackout) · ▶ play or resume · ❚❚ pause (LEDs hold their state).
+- **Browser:** click a scene to run it (blue = selected, ▶ = running); ☆ favorites it; right-click for shortcuts and order.
+  **Patterns** keeps saved Custom Pattern paintings (✎ in the workspace bar, or +); **Notes** is a free-text scratchpad.
+- **Inspector tabs:**
+  - **Pattern:** playback, presets, the scene's own settings and paint tools
+    (brush, eraser, eyedropper, flood fill).
+  - **Colors:** the scene's colours and the preview mode.
+  - **Behavior:** the keyboard-shortcut editor.
+  - **MIDI:** device, live monitor and log.
+- The look is defined once in `apc_light/ui/design.py` (tokens) and `ui/theme.py` (stylesheet built from them).
+  Reusable widgets live in `ui/components.py`.
 
 ## Keyboard
 
@@ -82,6 +106,8 @@ QT_QPA_PLATFORM=offscreen .venv/bin/python -m pytest -q tests
 | `0` | Blackout |
 | ⌘R | Refresh MIDI |
 | ⌘B | Blackout |
+| ⌘↩ / ⌘. | Play / pause animation |
+| ⌘← / ⌘→ | Previous / next scene |
 | ⌘⇧D | Toggle diagnostics |
 
 To reassign keys, right-click a scene and choose **Keyboard Shortcut**. Digit shortcuts only
@@ -140,7 +166,7 @@ In **palette mode**, each pad gets the best of the 127 × 7 colour-and-brightnes
 for the colour the renderer asks for, so fades use the APC's real per-pad brightness levels.
 In **RGB mode**, the true colour is sent in bulk SysEx runs. In both modes, colours are snapped
 to perceptually even steps before diffing, so invisible micro-changes never go out over MIDI.
-**Hardware-accurate preview** (inspector) makes the on-screen APC show those quantized colours.
+**Hardware-accurate preview** (chip / sparkle toggle above the APC, or Inspector ▸ Colors) makes the on-screen APC show those quantized colours.
 Switch it off to see the renderer's ideal colours instead.
 
 ## How it works
@@ -221,7 +247,7 @@ The automated tests use a simulated APC and a virtual CoreMIDI APC. These checks
 4. Press two or three pads at once, or ~150 ms apart. All reactions play and overlap.
 5. Hold a pad for 3 s. It stays bright and gently breathes. Release: it fades out in about ¼ s.
 6. Tap all four **corners** and edge pads with each **Reaction** style. They look right and nothing spills oddly.
-7. Watch Diagnostics (footer): **touch→LED** should read under 20 ms. **pads:** shows whether your unit
+7. Watch Inspector ▸ MIDI ▸ Monitor: **Touch → LED** should read under 20 ms. **Pad velocity** shows whether your unit
    is velocity-sensitive; if it says "fixed velocity", the Velocity switch has no effect.
 8. Compare **LED OUTPUT → Palette** and **RGB**. RGB should fade more smoothly; palette mode
    should still look clean, with dim trails, not flicker. Toggle **Hardware-accurate preview**
@@ -231,4 +257,4 @@ The automated tests use a simulated APC and a virtual CoreMIDI APC. These checks
 11. Try every preset. **PERFORMANCE** should feel tight for rhythmic tapping and **ZEN** very slow.
 12. Quit while pressing pads. The APC goes dark.
 
-If something looks wrong, open the **Diagnostics** panel (footer) and use **Copy Log**.
+If something looks wrong, open **Inspector ▸ MIDI** (or ⌘⇧D) and use **Copy Log**.

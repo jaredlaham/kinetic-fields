@@ -1,27 +1,19 @@
-"""Main window: header, scene library, APC visualizer, inspector, diagnostics."""
+"""Main window: toolbar / browser · workspace · inspector / status bar."""
 
 from __future__ import annotations
 
-from pathlib import Path
 from typing import Optional
 
-from PySide6.QtCore import QByteArray, Qt, QTimer, Signal
-from PySide6.QtGui import QAction, QKeySequence, QPixmap
-from PySide6.QtWidgets import (
-    QCheckBox, QComboBox, QFrame, QHBoxLayout, QLabel, QMainWindow, QPushButton, QScrollArea, QSplitter,
-    QVBoxLayout, QWidget,
-)
+from PySide6.QtCore import QByteArray, QPoint, Qt, QTimer, Signal
+from PySide6.QtGui import QAction, QKeySequence
+from PySide6.QtWidgets import QMainWindow, QMenu, QSplitter, QVBoxLayout, QWidget
 
 from .. import __version__
-from ..midi.protocol import BRIGHTNESS_LEVELS
-from ..engine.manager import speed_factor
-from . import theme
 from .apc_view import ApcView
-from .controls import LabeledSlider, ParamsPanel, Segmented, ctl_label
-from .diagnostics import DiagnosticsPanel
-from .scene_library import SceneLibrary
-
-AUTO_PORT = "Auto-detect APC mini mk2"
+from .browser import BrowserPanel
+from .chrome import GlobalToolbar, StatusBar, WorkspaceBar
+from .design import C, H
+from .inspector import Inspector
 
 
 class MainWindow(QMainWindow):
@@ -32,61 +24,56 @@ class MainWindow(QMainWindow):
         self.ctl = ctl
         s = ctl.settings
         self.setWindowTitle("Kinetic Kontroller")
-        self.setMinimumSize(1000, 640)
-        self.resize(1180, 760)
+        self.setMinimumSize(1180, 740)
+        self.resize(1520, 940)
 
         root = QWidget()
-        root_lay = QVBoxLayout(root)
-        root_lay.setContentsMargins(0, 0, 0, 0)
-        root_lay.setSpacing(0)
+        rl = QVBoxLayout(root)
+        rl.setContentsMargins(0, 0, 0, 0)
+        rl.setSpacing(0)
         self.setCentralWidget(root)
 
-        root_lay.addWidget(self._build_header())
+        self.toolbar = GlobalToolbar()
+        rl.addWidget(self.toolbar)
 
-        body = QSplitter(Qt.Horizontal)
-        body.setHandleWidth(1)
-        body.setChildrenCollapsible(False)
+        split = QSplitter(Qt.Horizontal)
+        split.setHandleWidth(1)
+        split.setChildrenCollapsible(False)
 
-        # -- sidebar --------------------------------------------------------
-        side = QWidget()
-        side.setObjectName("Sidebar")
-        side_lay = QVBoxLayout(side)
-        side_lay.setContentsMargins(0, 0, 0, 0)
-        self.library = SceneLibrary(ctl.registry.all(), ctl.thumbnail)
-        side_lay.addWidget(self.library)
-        side.setMinimumWidth(230)
-        side.setMaximumWidth(320)
-        body.addWidget(side)
+        self.library = BrowserPanel(ctl.registry.all(), ctl.thumbnail)
+        self.library.setMinimumWidth(H.BROWSER_MIN)
+        self.library.setMaximumWidth(H.BROWSER_MAX)
+        split.addWidget(self.library)
 
-        # -- stage ----------------------------------------------------------
-        stage = QWidget()
-        stage.setObjectName("Stage")
-        st = QVBoxLayout(stage)
-        st.setContentsMargins(28, 22, 28, 18)
-        st.setSpacing(4)
-        self.now_title = QLabel("—")
-        self.now_title.setObjectName("NowTitle")
-        self.now_sub = QLabel("")
-        self.now_sub.setObjectName("NowSub")
-        st.addWidget(self.now_title)
-        st.addWidget(self.now_sub)
+        work = QWidget()
+        work.setObjectName("Workspace")
+        work.setAttribute(Qt.WA_StyledBackground, True)
+        wl = QVBoxLayout(work)
+        wl.setContentsMargins(0, 0, 0, 0)
+        wl.setSpacing(0)
+        self.workbar = WorkspaceBar(bool(s["hardware_preview"]))
+        wl.addWidget(self.workbar)
         self.view = ApcView()
-        st.addWidget(self.view, 1)
-        body.addWidget(stage)
+        wl.addWidget(self.view, 1)
+        split.addWidget(work)
 
-        # -- inspector ------------------------------------------------------
-        body.addWidget(self._build_inspector())
-        body.setStretchFactor(0, 0)
-        body.setStretchFactor(1, 1)
-        body.setStretchFactor(2, 0)
-        body.setSizes([260, 620, 320])
-        root_lay.addWidget(body, 1)
+        self.inspector = Inspector(s, ctl.registry.all(), log_handler)
+        self.inspector.setMinimumWidth(H.INSPECTOR_MIN)
+        self.inspector.setMaximumWidth(H.INSPECTOR_MAX)
+        split.addWidget(self.inspector)
+        split.setStretchFactor(0, 0)
+        split.setStretchFactor(1, 1)
+        split.setStretchFactor(2, 0)
+        split.setSizes([H.BROWSER, 1520 - H.BROWSER - H.INSPECTOR, H.INSPECTOR])
+        rl.addWidget(split, 1)
 
-        # -- diagnostics + footer --------------------------------------------
-        self.diagnostics = DiagnosticsPanel(log_handler, ctl.open_log_folder)
-        self.diagnostics.setVisible(bool(s["show_diagnostics"]))
-        root_lay.addWidget(self.diagnostics)
-        root_lay.addWidget(self._build_footer())
+        self.statusbar = StatusBar()
+        rl.addWidget(self.statusbar)
+
+        ui = s.get("ui_state", {})
+        self.library.set_tab(ui.get("browser_tab", "Effects"))
+        self.library.set_notes(s.get("notes", ""))
+        self.library.patterns.set_patterns(s.get("patterns", {}))
 
         self._build_menus()
         self._wire()
@@ -98,287 +85,218 @@ class MainWindow(QMainWindow):
             except Exception:
                 pass
 
+        self._last_frames = 0
+        self._last_out = 0
+        self._last_in = 0
         self._stats_timer = QTimer(self)
         self._stats_timer.setInterval(1000)
         self._stats_timer.timeout.connect(self._update_stats)
         self._stats_timer.start()
-        self._last_frames = 0
+        self._meter_timer = QTimer(self)
+        self._meter_timer.setInterval(50)
+        self._meter_timer.timeout.connect(self._update_meters)
+        self._meter_timer.start()
 
-    # ------------------------------------------------------------------ build
-    def _build_header(self) -> QWidget:
-        w = QFrame()
-        w.setObjectName("Header")
-        w.setFixedHeight(58)
-        lay = QHBoxLayout(w)
-        lay.setContentsMargins(18, 0, 14, 0)
-        lay.setSpacing(10)
-        logo = QLabel()
-        logo.setFixedSize(30, 30)
-        icon = Path(__file__).resolve().parents[1] / "assets" / "AppIcon-256.png"
-        pm = QPixmap(str(icon))
-        if not pm.isNull():
-            dpr = self.devicePixelRatioF()
-            pm = pm.scaled(int(30 * dpr), int(30 * dpr), Qt.KeepAspectRatio, Qt.SmoothTransformation)
-            pm.setDevicePixelRatio(dpr)
-            logo.setPixmap(pm)
-        lay.addWidget(logo)
-        titles = QVBoxLayout()
-        titles.setSpacing(0)
-        t = QLabel("KINETIC KONTROLLER")
-        t.setObjectName("AppTitle")
-        sub = QLabel("LED console for Akai APC mini mk2")
-        sub.setObjectName("AppSub")
-        titles.addStretch(1)
-        titles.addWidget(t)
-        titles.addWidget(sub)
-        titles.addStretch(1)
-        lay.addLayout(titles)
-        lay.addStretch(1)
+    # compatibility aliases used by the controller/tests
+    @property
+    def params(self) -> Inspector:
+        return self.inspector
 
-        self.status = QLabel()
-        self.status.setTextFormat(Qt.RichText)
-        lay.addWidget(self.status)
-        lay.addSpacing(8)
-        self.port_combo = QComboBox()
-        self.port_combo.setMinimumWidth(220)
-        self.port_combo.setToolTip("MIDI output used for the LEDs")
-        lay.addWidget(self.port_combo)
-        self.refresh_btn = QPushButton("Refresh MIDI")
-        self.refresh_btn.setToolTip("Rescan MIDI devices and reconnect (⌘R)")
-        lay.addWidget(self.refresh_btn)
-        return w
-
-    def _build_inspector(self) -> QWidget:
-        s = self.ctl.settings
-        outer = QWidget()
-        outer.setObjectName("Inspector")
-        outer.setMinimumWidth(290)
-        outer.setMaximumWidth(360)
-        ol = QVBoxLayout(outer)
-        ol.setContentsMargins(0, 0, 0, 0)
-        ol.setSpacing(0)
-
-        scroll = QScrollArea()
-        scroll.setWidgetResizable(True)
-        scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
-        inner = QWidget()
-        lay = QVBoxLayout(inner)
-        lay.setContentsMargins(18, 18, 18, 18)
-        lay.setSpacing(18)
-
-        self.speed = LabeledSlider("Speed", 0, 100, int(s["speed"]),
-                                   fmt=lambda v: f"{speed_factor(v):.2f}×", left="Slow", right="Fast")
-        lay.addWidget(self.speed)
-
-        levels = BRIGHTNESS_LEVELS
-        idx = min(range(len(levels)), key=lambda i: abs(levels[i] - int(s["brightness"])))
-        self.brightness = LabeledSlider("Brightness", 0, len(levels) - 1, idx,
-                                        fmt=lambda v: f"{levels[v]}%", left="10%", right="100%")
-        self.brightness.slider.setPageStep(1)
-        self.brightness.slider.setTickPosition(self.brightness.slider.TickPosition.NoTicks)
-        self.brightness.setToolTip("Uses the APC's seven official LED brightness levels")
-        lay.addWidget(self.brightness)
-
-        sep = QFrame()
-        sep.setFixedHeight(1)
-        sep.setStyleSheet(f"background:{theme.BORDER};")
-        lay.addWidget(sep)
-
-        self.params_title = ctl_label("Scene settings")
-        lay.addWidget(self.params_title)
-        self.params = ParamsPanel()
-        lay.addWidget(self.params)
-
-        sep2 = QFrame()
-        sep2.setFixedHeight(1)
-        sep2.setStyleSheet(f"background:{theme.BORDER};")
-        lay.addWidget(sep2)
-
-        lay.addWidget(ctl_label("LED output"))
-        self.mode = Segmented(["Palette", "RGB"], "RGB" if s["output_mode"] == "rgb" else "Palette")
-        self.mode.setToolTip("Palette: classic Note On colours (most compatible).\n"
-                             "RGB: true 24-bit colour via SysEx (smoother gradients).")
-        lay.addWidget(self.mode)
-
-        self.opt_restore = QCheckBox("Start last scene at launch")
-        self.opt_restore.setChecked(bool(s["restore_on_launch"]))
-        self.opt_buttons = QCheckBox("APC scene buttons pick favorites")
-        self.opt_buttons.setChecked(bool(s["scene_buttons"]))
-        self.opt_buttons.setToolTip("The 8 green scene-launch buttons start favorites 1–8.\n"
-                                    "Shift + any scene button = Blackout.")
-        self.opt_quit = QCheckBox("Blackout when quitting")
-        self.opt_quit.setChecked(bool(s["blackout_on_quit"]))
-        self.opt_preview = QCheckBox("Hardware-accurate preview")
-        self.opt_preview.setChecked(bool(s["hardware_preview"]))
-        self.opt_preview.setToolTip("On: the on-screen pads show what the APC can physically display\n"
-                                    "(its colour palette / brightness steps). Off: the ideal colours.")
-        for cb in (self.opt_preview, self.opt_restore, self.opt_buttons, self.opt_quit):
-            lay.addWidget(cb)
-        lay.addStretch(1)
-        scroll.setWidget(inner)
-        ol.addWidget(scroll, 1)
-
-        bw = QWidget()
-        bl = QVBoxLayout(bw)
-        bl.setContentsMargins(18, 10, 18, 18)
-        self.blackout_btn = QPushButton("BLACKOUT")
-        self.blackout_btn.setObjectName("Blackout")
-        self.blackout_btn.setCursor(Qt.PointingHandCursor)
-        self.blackout_btn.setToolTip("Stop everything and turn every LED off  (0)")
-        bl.addWidget(self.blackout_btn)
-        ol.addWidget(bw)
-        return outer
-
-    def _build_footer(self) -> QWidget:
-        w = QFrame()
-        w.setObjectName("Footer")
-        w.setFixedHeight(28)
-        lay = QHBoxLayout(w)
-        lay.setContentsMargins(12, 0, 12, 0)
-        self.diag_btn = QPushButton()
-        self.diag_btn.setObjectName("Link")
-        self.diag_btn.setCursor(Qt.PointingHandCursor)
-        lay.addWidget(self.diag_btn)
-        self._update_diag_btn()
-        lay.addStretch(1)
-        self.footer_info = QLabel()
-        self.footer_info.setObjectName("Mono")
-        lay.addWidget(self.footer_info)
-        v = QLabel(f"v{__version__}")
-        v.setObjectName("Mono")
-        lay.addWidget(v)
-        return w
-
+    # ------------------------------------------------------------------ menus
     def _build_menus(self) -> None:
         mb = self.menuBar()
         m = mb.addMenu("Controls")
-        a = QAction("Blackout", self)
-        a.setShortcut(QKeySequence("Ctrl+B"))  # ⌘B on macOS; plain 0 also works
-        a.triggered.connect(self.ctl.blackout)
-        m.addAction(a)
-        a = QAction("Refresh MIDI", self)
-        a.setShortcut(QKeySequence("Ctrl+R"))
-        a.triggered.connect(self.ctl.refresh_midi)
-        m.addAction(a)
+        for text, key, fn in (("Blackout", "Ctrl+B", self.ctl.blackout), ("Refresh MIDI", "Ctrl+R", self.ctl.refresh_midi),
+                              ("Play / Resume", "Ctrl+Return", self.ctl.play),
+                              ("Pause Animation", "Ctrl+.", lambda: self.ctl.set_paused(not self.ctl.engine.paused)),
+                              ("Previous Scene", "Ctrl+Left", lambda: self.ctl.step_effect(-1)),
+                              ("Next Scene", "Ctrl+Right", lambda: self.ctl.step_effect(1))):
+            a = QAction(text, self)
+            a.setShortcut(QKeySequence(key))
+            a.triggered.connect(fn)
+            m.addAction(a)
         m.addSeparator()
         a = QAction("Show Diagnostics", self)
         a.setShortcut(QKeySequence("Ctrl+Shift+D"))
         a.triggered.connect(self.toggle_diagnostics)
         m.addAction(a)
         f = mb.addMenu("Folders")
-        a = QAction("Open Settings Folder", self)
-        a.triggered.connect(self.ctl.open_settings_folder)
-        f.addAction(a)
-        a = QAction("Open User Effects Folder", self)
-        a.triggered.connect(self.ctl.open_effects_folder)
-        f.addAction(a)
-        a = QAction("Open Log Folder", self)
-        a.triggered.connect(self.ctl.open_log_folder)
-        f.addAction(a)
+        self._folder_actions(f)
+
+    def _folder_actions(self, menu: QMenu) -> None:
+        menu.addAction("Open Settings Folder").triggered.connect(self.ctl.open_settings_folder)
+        menu.addAction("Open User Effects Folder").triggered.connect(self.ctl.open_effects_folder)
+        menu.addAction("Open Log Folder").triggered.connect(self.ctl.open_log_folder)
+
+    def _popup(self, anchor, build) -> None:
+        menu = QMenu(self)
+        build(menu)
+        menu.exec(anchor.mapToGlobal(QPoint(0, anchor.height() + 2)))
+
+    def _settings_menu(self, menu: QMenu) -> None:
+        menu.addAction("Refresh MIDI").triggered.connect(self.ctl.refresh_midi)
+        menu.addAction("MIDI & Diagnostics…").triggered.connect(self.toggle_diagnostics)
+        menu.addSeparator()
+        self._folder_actions(menu)
+        menu.addSeparator()
+        a = menu.addAction(f"Kinetic Kontroller {__version__}")
+        a.setEnabled(False)
+
+    def _scene_menu(self, menu: QMenu) -> None:
+        eid = self.ctl.shown_id
+        cls = self.ctl.registry.get(eid) if eid else None
+        if cls is None:
+            menu.addAction("No scene selected").setEnabled(False)
+            return
+        menu.addAction(f"Restart {cls.name}").triggered.connect(lambda: self.ctl.start_effect(eid))
+        fav = eid in self.ctl.settings["favorites"]
+        menu.addAction("Remove from Favorites" if fav else "Add to Favorites").triggered.connect(
+            lambda: self.ctl.toggle_favorite(eid))
+        sub = menu.addMenu("Keyboard Shortcut")
+        for key in "123456789":
+            sub.addAction(key).triggered.connect(lambda _=False, k=key: self.ctl.assign_shortcut(k, eid))
+        sub.addSeparator()
+        sub.addAction("None").triggered.connect(lambda: self.ctl.assign_shortcut("", eid))
+        if cls.presets:
+            menu.addAction("Reset Settings to Defaults").triggered.connect(lambda: self.ctl.pattern_action(eid, "reset"))
+        menu.addSeparator()
+        menu.addAction("Add Effect…").triggered.connect(self.ctl.add_effect)
 
     # ------------------------------------------------------------------ wiring
     def _wire(self) -> None:
         c = self.ctl
-        self.library.effect_clicked.connect(c.start_effect)
-        self.library.favorites_changed.connect(c.set_favorites)
-        self.library.shortcut_assigned.connect(c.assign_shortcut)
+        tb, wb, ins, lib = self.toolbar, self.workbar, self.inspector, self.library
+        tb.prev_clicked.connect(lambda: c.step_effect(-1))
+        tb.next_clicked.connect(lambda: c.step_effect(1))
+        tb.play_clicked.connect(c.play)
+        tb.pause_clicked.connect(lambda: c.set_paused(tb.pause.isChecked()))
+        tb.stop_clicked.connect(c.blackout)
+        tb.refresh_clicked.connect(c.refresh_midi)
+        tb.settings_clicked.connect(lambda b: self._popup(b, self._settings_menu))
+        wb.view_changed.connect(c.set_hardware_preview)
+        wb.save_pattern.connect(c.save_pattern)
+        wb.favorite_clicked.connect(lambda: c.toggle_favorite(c.shown_id) if c.shown_id else None)
+        wb.more_clicked.connect(lambda b: self._popup(b, self._scene_menu))
+        wb.play_clicked.connect(lambda: c.start_effect(c.shown_id) if c.shown_id else c.play())
+        wb.stop_clicked.connect(c.blackout)
+        lib.effect_clicked.connect(c.start_effect)
+        lib.favorites_changed.connect(c.set_favorites)
+        lib.shortcut_assigned.connect(c.assign_shortcut)
+        lib.add_effect.connect(c.add_effect)
+        lib.save_pattern.connect(c.save_pattern)
+        lib.load_pattern.connect(c.load_pattern)
+        lib.delete_pattern.connect(c.delete_pattern)
+        lib.notes_changed.connect(c.set_notes)
+        lib.ui_changed.connect(c.set_ui_state)
         self.view.pad_pressed.connect(lambda x, y, b: c.screen_pad(x, y, True, b))
         self.view.pad_released.connect(lambda x, y: c.screen_pad(x, y, False))
-        self.opt_preview.toggled.connect(c.set_hardware_preview)
-        self.refresh_btn.clicked.connect(c.refresh_midi)
-        self.port_combo.activated.connect(self._port_chosen)
-        self.speed.valueChanged.connect(c.set_speed)
-        self.brightness.valueChanged.connect(lambda i: c.set_brightness(BRIGHTNESS_LEVELS[i]))
-        self.params.param_changed.connect(c.set_param)
-        self.params.action.connect(c.pattern_action)
-        self.mode.changed.connect(lambda v: c.set_output_mode("rgb" if v == "RGB" else "palette"))
-        self.opt_restore.toggled.connect(lambda v: c.set_option("restore_on_launch", v))
-        self.opt_buttons.toggled.connect(lambda v: c.set_option("scene_buttons", v))
-        self.opt_quit.toggled.connect(lambda v: c.set_option("blackout_on_quit", v))
-        self.blackout_btn.clicked.connect(c.blackout)
-        self.diag_btn.clicked.connect(self.toggle_diagnostics)
+        ins.param_changed.connect(c.set_param)
+        ins.action.connect(c.pattern_action)
+        ins.speed_changed.connect(c.set_speed)
+        ins.brightness_changed.connect(c.set_brightness)
+        ins.output_mode_changed.connect(c.set_output_mode)
+        ins.option_changed.connect(c.set_option)
+        ins.preview_changed.connect(c.set_hardware_preview)
+        ins.port_chosen.connect(c.set_midi_port)
+        ins.refresh_midi.connect(c.refresh_midi)
+        ins.shortcut_assigned.connect(c.assign_shortcut)
+        ins.shortcut_cleared.connect(c.clear_shortcut)
+        ins.blackout.connect(c.blackout)
+        ins.ui_changed.connect(c.set_ui_state)
+        ins.open_logs.connect(c.open_log_folder)
+        self.statusbar.menu_clicked.connect(lambda b: self._popup(b, self._settings_menu))
 
-    def _port_chosen(self, _index: int) -> None:
-        text = self.port_combo.currentText()
-        self.ctl.set_midi_port("" if text == AUTO_PORT else text)
-
-    # ------------------------------------------------------------------ updates
+    # ------------------------------------------------------------------ updates from the controller
     def set_ports(self, names, preferred: str) -> None:
-        self.port_combo.blockSignals(True)
-        self.port_combo.clear()
-        self.port_combo.addItem(AUTO_PORT)
-        for n in names:
-            self.port_combo.addItem(n)
-        if preferred and preferred not in names:
-            self.port_combo.addItem(preferred)
-        self.port_combo.setCurrentText(preferred or AUTO_PORT)
-        self.port_combo.blockSignals(False)
+        self.inspector.set_ports(names, preferred)
 
     def set_connection(self, connected: bool, port: Optional[str], midi_ok: bool = True) -> None:
-        if connected:
-            html = (f"<span style='color:{theme.GOOD}; font-size:15px'>●</span>"
-                    f"&nbsp; <b>APC Mini MK2 Connected</b>")
-            self.status.setToolTip(port or "")
-        elif not midi_ok:
-            html = (f"<span style='color:{theme.BAD}; font-size:15px'>○</span>"
-                    f"&nbsp; <span style='color:{theme.TEXT_DIM}'>MIDI unavailable</span>")
-        else:
-            html = (f"<span style='color:{theme.TEXT_FAINT}; font-size:15px'>○</span>"
-                    f"&nbsp; <span style='color:{theme.TEXT_DIM}'>APC Mini MK2 Not Connected</span>")
-            self.status.setToolTip("Plug in the APC mini mk2 — it will be picked up automatically.")
-        self.status.setText(html)
+        self.toolbar.set_connection(connected, midi_ok)
         self.view.set_connected(connected)
+        if connected:
+            self.statusbar.set_status("Ready", C.GOOD)
+            self.inspector.set_port_status(f"Connected: {port}")
+        elif not midi_ok:
+            self.statusbar.set_status("MIDI unavailable", C.BAD)
+            self.inspector.set_port_status("MIDI system unavailable")
+        else:
+            self.statusbar.set_status("APC not connected — plug it in to resume", C.TEXT_3)
+            self.inspector.set_port_status("Waiting for the APC mini mk2…")
+
+    def set_output_mode(self, mode: str) -> None:
+        self.inspector.set_output_mode(mode)
+
+    def set_preview(self, hardware: bool) -> None:
+        self.workbar.view.set_current("icon:chip" if hardware else "icon:sparkle")
+        self.inspector.opt_preview.setChecked(hardware)
+
+    def set_paused(self, paused: bool) -> None:
+        self.toolbar.pause.setChecked(paused)
+        self._update_scene_header()
 
     def show_effect(self, effect_id: Optional[str], shown_id: Optional[str]) -> None:
         """``effect_id`` = running effect (None after blackout); ``shown_id`` =
-        effect whose settings the inspector shows."""
+        effect whose settings the inspector shows (the selected row)."""
         reg = self.ctl.registry
         cls = reg.get(effect_id) if effect_id else None
         shown = reg.get(shown_id) if shown_id else None
-        self.library.set_active(effect_id)
-        if cls:
-            self.now_title.setText(cls.name.upper())
-            kind = "Animated" if cls().is_animated(self.ctl.engine.params_for(cls.id)) else "Static"
-            self.now_sub.setText(f"{kind} · {cls.description}")
-        else:
-            self.now_title.setText("BLACKOUT")
-            self.now_sub.setText("All LEDs off. Pick a scene to start.")
-        if shown is None or self.params.effect_id != shown.id:
-            self.params.show_effect(shown, self.ctl.engine.params_for(shown.id) if shown else {})
-        self.params_title.setText(f"{shown.name.upper()} SETTINGS" if shown else "SCENE SETTINGS")
+        self.library.set_selection(shown_id, effect_id)
+        if shown is None or self.inspector.effect_id != shown.id:
+            self.inspector.show_effect(shown, self.ctl.engine.params_for(shown.id) if shown else {})
         self.view.set_touch_mode(bool(cls and cls.accepts_touch))
+        self._update_scene_header()
+
+    def _update_scene_header(self) -> None:
+        c = self.ctl
+        shown = c.registry.get(c.shown_id) if c.shown_id else None
+        running = c.engine.active_id
+        if shown is None:
+            self.workbar.set_scene("No scene", "Blackout", False, False)
+            return
+        if running == shown.id:
+            state = "Paused" if c.engine.paused else ("Animated" if shown().is_animated(
+                c.engine.params_for(shown.id)) else "Static")
+        else:
+            state = "Stopped"
+        self.workbar.set_scene(shown.name, state, shown.id in c.settings["favorites"],
+                               any(p.key == "pattern" for p in shown.params))
 
     def refresh_params(self) -> None:
-        eid = self.params.effect_id
+        eid = self.inspector.effect_id
         cls = self.ctl.registry.get(eid) if eid else None
-        self.params.show_effect(cls, self.ctl.engine.params_for(eid) if cls else {})
+        self.inspector.show_effect(cls, self.ctl.engine.params_for(eid) if cls else {})
+        self._update_scene_header()
 
     def toggle_diagnostics(self) -> None:
-        vis = not self.diagnostics.isVisible()
-        self.diagnostics.setVisible(vis)
-        self.ctl.set_option("show_diagnostics", vis)
-        self._update_diag_btn()
+        self.inspector.set_tab("MIDI")
 
-    def _update_diag_btn(self) -> None:
-        vis = self.ctl.settings["show_diagnostics"]
-        self.diag_btn.setText(("▾" if vis else "▸") + "  Diagnostics")
+    # ------------------------------------------------------------------ telemetry
+    def _update_meters(self) -> None:
+        dev, hub = self.ctl.device, self.ctl.midi_input
+        out, inn = dev.messages_sent, hub.events_received
+        d_out, d_in = out - self._last_out, inn - self._last_in
+        self._last_out, self._last_in = out, inn
+        if d_out:
+            self.toolbar.meter_out.hit(min(1.0, 0.35 + d_out / 40.0))
+        if d_in:
+            self.toolbar.meter_in.hit(min(1.0, 0.55 + d_in / 6.0))
 
     def _update_stats(self) -> None:
-        e = self.ctl.engine
+        e, dev, hub = self.ctl.engine, self.ctl.device, self.ctl.midi_input
         fps = e.frames_rendered - self._last_frames
         self._last_frames = e.frames_rendered
-        dev = self.ctl.device
+        mode = "RGB" if self.ctl.output.mode == "rgb" else "Palette"
+        self.statusbar.telemetry.setText(
+            f"{fps} fps  •  {dev.messages_sent:,} MIDI msgs  •  {mode}  •  {self.ctl.output.brightness}%  •  v{__version__}")
         lat = e.last_input_latency_ms
-        lat_txt = f" · touch→LED {lat:.1f} ms" if lat is not None else ""
-        text = (f"{fps} fps · {dev.messages_sent} MIDI out · {self.ctl.midi_input.events_received} in{lat_txt}"
-                f" · {self.ctl.output.mode} · {self.ctl.output.brightness}%")
-        self.footer_info.setText(text)
-        if self.diagnostics.isVisible():
-            vel = "velocity-sensitive" if self.ctl.midi_input.velocity_sensitive else "fixed velocity"
-            self.diagnostics.set_stats(f"port: {dev.port_name or '—'}   render thread: "
-                                       f"{'running' if e.running else 'stopped'}   held pads: "
-                                       f"{len(e.interaction.held)}   max touch→LED: "
-                                       f"{e.max_input_latency_ms:.1f} ms   pads: {vel}")
+        self.inspector.set_stats({
+            "out": f"{dev.messages_sent:,} messages",
+            "in": f"{hub.events_received:,} events",
+            "lat": f"{lat:.1f} ms (max {e.max_input_latency_ms:.1f})" if lat is not None else "—",
+            "held": str(len(e.interaction.held)),
+            "vel": "velocity-sensitive" if hub.velocity_sensitive else "fixed (127)",
+            "thread": ("paused" if e.paused else "running") if e.running else "stopped",
+        })
 
     def closeEvent(self, e) -> None:
         self.ctl.settings["window_geometry"] = bytes(self.saveGeometry().toBase64()).decode()

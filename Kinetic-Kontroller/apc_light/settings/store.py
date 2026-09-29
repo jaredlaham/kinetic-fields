@@ -30,6 +30,9 @@ DEFAULTS: Dict[str, Any] = {
     "show_diagnostics": False,
     "hardware_preview": True,     # visualizer shows what the APC can actually display
     "window_geometry": None,
+    "patterns": {},               # saved Custom Pattern snapshots: name -> 64 colours
+    "notes": "",                  # free-text notes (Browser > Notes)
+    "ui_state": {},               # tabs, collapsed sections
 }
 
 

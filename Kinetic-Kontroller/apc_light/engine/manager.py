@@ -72,6 +72,7 @@ class Engine:
         self._inputs: "collections.deque[PadEvent]" = collections.deque()
         self.interaction = InteractionState()
         self.preview_hardware = True
+        self.paused = False
         self._latency_marks: List[float] = []
         self.last_input_latency_ms: Optional[float] = None
         self.max_input_latency_ms = 0.0
@@ -226,6 +227,15 @@ class Engine:
                 self._render_locked(force=True)
         self._wake.set()
 
+    def set_paused(self, paused: bool) -> None:
+        """Freeze animation (LEDs hold their current state). Parameter changes
+        and input are still applied; time resumes where it stopped."""
+        with self._lock:
+            self.paused = bool(paused)
+            self._last_time = time.monotonic()
+            self._dirty = True
+        self._wake.set()
+
     def set_preview_hardware(self, enabled: bool) -> None:
         with self._lock:
             self.preview_hardware = bool(enabled)
@@ -364,7 +374,7 @@ class Engine:
         if effect is not None and cls is not None:
             ctx = self._ctx
             ctx.now, ctx.real_dt = now, real_dt
-            animated = effect.is_animated(ctx.params)
+            animated = effect.is_animated(ctx.params) and not self.paused
             if animated or force:
                 ctx.dt = real_dt * ctx.speed if not force or animated else 0.0
                 ctx.t += ctx.dt

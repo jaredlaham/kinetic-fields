@@ -257,7 +257,8 @@ class Engine:
             ev = self._inputs.popleft()
             had = True
             self.interaction.apply(ev)
-            if ev.pressed and ev.source == "hardware":
+            if ev.pressed and ev.source == "hardware" and effect is not None:
+                # Only presses that something can react to count towards latency.
                 self._latency_marks.append(ev.time)
             if effect is not None:
                 try:
@@ -380,6 +381,8 @@ class Engine:
                     rendered = True
                     animated = False
                     self._emit_effect_changed()
+        if not rendered:
+            self._latency_marks.clear()
         if rendered or self._dirty:
             self.output.show(self._frame.pads)
             if self._latency_marks:

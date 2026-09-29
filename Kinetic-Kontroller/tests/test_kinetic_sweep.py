@@ -345,6 +345,20 @@ def test_hardware_press_reaches_leds_fast(live):
     assert wait_for(lambda: backend.apc.lit == 0, 3.0)   # everything fades back to dark ambient
 
 
+def test_presses_during_blackout_do_not_skew_latency(live):
+    backend, device, hub, engine = live
+    engine.set_effect("kinetic_sweep")
+    engine.blackout()
+    backend.press(10)
+    backend.release(10)
+    time.sleep(0.3)
+    engine.set_effect("kinetic_sweep")
+    backend.press(20)
+    assert wait_for(lambda: engine.last_input_latency_ms is not None)
+    time.sleep(0.05)
+    assert engine.max_input_latency_ms < 20
+
+
 def test_diff_only_sends_changes(live):
     backend, device, hub, engine = live
     engine.set_params("kinetic_sweep", {"intensity": 0, "base_glow": 0.0})

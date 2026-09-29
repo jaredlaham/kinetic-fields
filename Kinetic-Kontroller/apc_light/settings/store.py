@@ -15,7 +15,7 @@ from . import paths
 log = logging.getLogger("apc.settings")
 
 DEFAULTS: Dict[str, Any] = {
-    "version": 1,
+    "version": 2,
     "last_effect": None,          # id of the last effect that was started
     "restore_on_launch": False,   # start last_effect automatically at launch
     "speed": 50,                  # 0..100, 50 = 1x
@@ -59,11 +59,20 @@ class Settings:
             if key in raw and (default is None or isinstance(raw[key], type(default))
                                or (isinstance(default, int) and isinstance(raw[key], (int, float)))):
                 self.data[key] = raw[key]
+        self._migrate(int(raw.get("version", 1)))
         self.data["speed"] = max(0, min(100, int(self.data["speed"])))
         self.data["brightness"] = max(0, min(100, int(self.data["brightness"])))
         if self.data["output_mode"] not in ("palette", "rgb"):
             self.data["output_mode"] = "palette"
         log.info("Settings loaded from %s", self.path)
+
+    def _migrate(self, version: int) -> None:
+        if version < 2:
+            # v2: Kinetic Sweep is favourite #1 (= APC scene button 1, key 1).
+            favs = [f for f in self.data["favorites"] if f != "kinetic_sweep"]
+            self.data["favorites"] = ["kinetic_sweep"] + favs
+            log.info("Settings migrated to v2: Kinetic Sweep is favorite #1")
+        self.data["version"] = DEFAULTS["version"]
 
     def save(self) -> None:
         self.path.parent.mkdir(parents=True, exist_ok=True)

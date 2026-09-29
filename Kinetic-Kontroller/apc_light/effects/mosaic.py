@@ -15,7 +15,7 @@ class Mosaic(Effect):
     name = "Mosaic"
     category = "Animated"
     description = "Colour tiles re-arranging themselves"
-    shortcut = "2"
+    shortcut = "3"
     order = 35
     params = [
         ChoiceParam("palette", "Palette", list(PALETTES) + ["Single colour"]),

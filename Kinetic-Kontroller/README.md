@@ -9,7 +9,9 @@ LEDs at a time, and **BLACKOUT** (or the `0` key) turns everything off.
 - Global **Speed** and **Brightness** (the APC's seven official brightness levels)
 - Per-scene settings (colors via the macOS color panel, text, modes), applied live
 - Auto-detects the `APC mini mk2 Control` port and reconnects after unplug/replug
-- APC hardware: the 8 green **scene buttons** start favorites 1–8, and **Shift + scene** blacks out
+- APC hardware: the 8 green **scene buttons** (right column, top = 1) start favorites 1–8, and
+  **Shift + scene** blacks out. Out of the box, number key N, favorite N and scene button N are the
+  same scene, with **Kinetic Sweep in #1**
 - Diagnostics panel in the app, so you never need Terminal
 - LEDs stay off at launch unless you turn on "Start last scene at launch"
 
@@ -76,7 +78,7 @@ QT_QPA_PLATFORM=offscreen .venv/bin/python -m pytest -q tests
 
 | Key | Action |
 |---|---|
-| `1` Rainbow · `2` Mosaic · `3` Creeper · `4` Heart · `5` Kinetic Marquee · `6` Kinetic Sweep | start scene |
+| `1` Kinetic Sweep · `2` Rainbow · `3` Mosaic · `4` Creeper · `5` Heart · `6` Kinetic Marquee | start scene |
 | `0` | Blackout |
 | ⌘R | Refresh MIDI |
 | ⌘B | Blackout |
@@ -212,7 +214,7 @@ The automated tests use a simulated APC and a virtual CoreMIDI APC. These checks
 
 ### Kinetic Sweep on the hardware
 
-1. Pick **Kinetic Sweep** (key `6`) and don't touch anything. The band glides left and right,
+1. Pick **Kinetic Sweep**: key `1`, or the **top green scene button** and don't touch anything. The band glides left and right,
    slows into each edge and turns around without jumping. Try Speed from Slow to Fast and Trails from Off to High.
 2. Tap one pad. It lights **immediately**, and the ripple spreads 2–4 pads and fades back into the sweep.
 3. Tap a pad rapidly, about 8 times per second. Every tap reacts and nothing stutters.

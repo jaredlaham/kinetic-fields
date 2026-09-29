@@ -51,7 +51,7 @@ def test_settings_persist_across_launches(qapp):
     assert s["last_effect"] == "heart"
     assert ctl2.engine.params_for("heart")["color"] == "#00ff00"
     assert ctl2.shortcuts()["7"] == "creeper"
-    assert "3" not in ctl2.shortcuts()  # creeper's default key moved to 7
+    assert "4" not in ctl2.shortcuts()  # creeper's default key moved to 7
     # LEDs are NOT turned on at launch unless restore_on_launch is set
     assert ctl2.engine.active_id is None
     assert ctl2.device.backend.apc.lit == 0
@@ -82,11 +82,11 @@ def test_keyboard_shortcuts_and_hardware_buttons(qapp):
     ev = QKeyEvent(QEvent.KeyPress, Qt.Key_1, Qt.NoModifier, "1")
     assert f.eventFilter(ctl.window, ev) or QApplication.activeWindow() is not ctl.window
     if QApplication.activeWindow() is ctl.window:
-        assert ctl.engine.active_id == "rainbow"
+        assert ctl.engine.active_id == "kinetic_sweep"
         # modifiers are left to macOS / Qt
         ev = QKeyEvent(QEvent.KeyPress, Qt.Key_2, Qt.ControlModifier, "2")
         assert not f.eventFilter(ctl.window, ev)
-    assert ctl.handle_key("2") and ctl.engine.active_id == "mosaic"
+    assert ctl.handle_key("3") and ctl.engine.active_id == "mosaic"
     assert ctl.handle_key("0") and ctl.engine.active_id is None
 
     # APC scene launch button 1 -> first favorite; its green LED lights

@@ -9,7 +9,7 @@ class Rainbow(Effect):
     name = "Rainbow"
     category = "Animated"
     description = "Rainbow stripes cycling through the spectrum"
-    shortcut = "1"
+    shortcut = "2"
     order = 10
     params = [ChoiceParam("layout", "Layout", ["Columns", "Rows", "Whole grid"])]
 

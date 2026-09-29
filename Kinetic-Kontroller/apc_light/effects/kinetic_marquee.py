@@ -10,7 +10,7 @@ class KineticMarquee(Effect):
     name = "Kinetic Marquee"
     category = "Animated"
     description = "Scrolling text across the pads"
-    shortcut = "5"
+    shortcut = "6"
     order = 60
     params = [
         TextParam("text", "Text", "KINETIC FIELDS"),

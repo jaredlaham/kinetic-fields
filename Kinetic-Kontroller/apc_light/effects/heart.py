@@ -22,7 +22,7 @@ class Heart(Effect):
     category = "Static"
     description = "A heart; turn on Beat for a heartbeat pulse"
     animated = False
-    shortcut = "4"
+    shortcut = "5"
     order = 20
     params = [
         ColorParam("color", "Color", "#ff0000"),

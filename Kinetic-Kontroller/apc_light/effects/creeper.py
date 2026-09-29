@@ -23,7 +23,7 @@ class Creeper(Effect):
     category = "Animated"
     description = "Creeper face with a shimmering pixel skin"
     animated = True
-    shortcut = "3"
+    shortcut = "4"
     order = 40
     params = [
         ColorParam("color", "Skin", "#00ff00"),

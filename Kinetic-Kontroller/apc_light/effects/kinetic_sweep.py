@@ -45,7 +45,7 @@ class KineticSweep(Effect):
     name = "Kinetic Sweep"
     category = "Animated"
     description = "Interactive sweep: press pads to ripple, pulse and bloom light"
-    shortcut = "6"
+    shortcut = "1"
     order = 5
     fps = 50
     accepts_touch = True

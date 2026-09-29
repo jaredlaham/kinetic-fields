@@ -21,6 +21,7 @@ class CustomPattern(Effect):
     category = "Static"
     description = "Paint pads on the on-screen APC to draw your own pattern"
     animated = False
+    accepts_touch = True
     order = 30
     params = [
         ColorParam("brush", "Brush", "#ff00ff"),

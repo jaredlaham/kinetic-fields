@@ -196,8 +196,16 @@ class ParamsPanel(QWidget):
         self._effect_id = cls.id if cls else None
         if cls is None:
             return
+        if cls.presets:
+            self._lay.addWidget(self._preset_row(cls.id, list(cls.presets)))
         visible = [p for p in cls.params if not p.hidden]
+        group = None
         for p in visible:
+            if p.group and p.group != group:
+                group = p.group
+                head = QLabel(group)
+                head.setObjectName("Group")
+                self._lay.addWidget(head)
             self._lay.addWidget(self._build(cls.id, p, values.get(p.key, p.default)))
         if any(p.key == "pattern" for p in cls.params):
             self._lay.addWidget(self._pattern_tools(cls.id))
@@ -205,6 +213,33 @@ class ParamsPanel(QWidget):
             hint = QLabel("This scene has no adjustable settings.")
             hint.setObjectName("Hint")
             self._lay.addWidget(hint)
+        if cls.presets:
+            reset = QPushButton("RESET")
+            reset.setToolTip("Restore this scene's default settings")
+            reset.clicked.connect(lambda: self.action.emit(cls.id, "reset"))
+            self._lay.addWidget(reset)
+        if cls.hint:
+            hint = QLabel(cls.hint)
+            hint.setObjectName("Hint")
+            hint.setWordWrap(True)
+            self._lay.addWidget(hint)
+
+    def _preset_row(self, eid: str, names: List[str]) -> QWidget:
+        box = QWidget()
+        lay = QVBoxLayout(box)
+        lay.setContentsMargins(0, 0, 0, 0)
+        lay.setSpacing(6)
+        lay.addWidget(ctl_label("Presets"))
+        grid = QGridLayout()
+        grid.setSpacing(4)
+        for i, name in enumerate(names):
+            b = QPushButton(name)
+            b.setObjectName("Preset")
+            b.setCursor(Qt.PointingHandCursor)
+            b.clicked.connect(lambda _=False, n=name: self.action.emit(eid, f"preset:{n}"))
+            grid.addWidget(b, i // 3, i % 3)
+        lay.addLayout(grid)
+        return box
 
     def _emit(self, eid: str, key: str):
         return lambda v: self.param_changed.emit(eid, key, v)
@@ -238,8 +273,10 @@ class ParamsPanel(QWidget):
             lay.addWidget(w)
         elif p.kind in ("int", "float"):
             scale = 100 if p.kind == "float" else 1
+            left, right = (list(p.ends) + ["", ""])[:2]
             w = LabeledSlider(p.label, int(p.minimum * scale), int(p.maximum * scale), int(value * scale),
-                              fmt=(lambda v, s=scale: f"{v / s:.2f}" if s != 1 else str(v)))
+                              fmt=(lambda v, s=scale: f"{v / s:.2f}" if s != 1 else str(v)),
+                              left=left, right=right)
             w.valueChanged.connect(lambda v, s=scale, k=p.key, kind=p.kind:
                                    self.param_changed.emit(eid, k, v / s if kind == "float" else v))
             lay.addWidget(w)

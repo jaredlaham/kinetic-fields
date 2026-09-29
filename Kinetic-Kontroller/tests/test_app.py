@@ -91,12 +91,12 @@ def test_keyboard_shortcuts_and_hardware_buttons(qapp):
 
     # APC scene launch button 1 -> first favorite; its green LED lights
     backend = ctl.device.backend
-    ctl._on_midi_in([0x90, 0x70, 127])
+    backend.press(0x70)
     assert ctl.engine.active_id == ctl.favorite_ids()[0]
     assert backend.apc.buttons.get(0x70) == 1
     # Shift + scene button -> blackout
-    ctl._on_midi_in([0x90, 0x7A, 127])
-    ctl._on_midi_in([0x90, 0x71, 127])
+    backend.press(0x7A)
+    backend.press(0x71)
     assert ctl.engine.active_id is None and backend.apc.is_dark()
     ctl.shutdown()
     ctl.window.deleteLater()
@@ -120,3 +120,44 @@ def test_self_test_subprocess(tmp_path):
     report = json.loads(line[len("SELF-TEST "):])
     assert r.returncode == 0, r.stderr[-2000:]
     assert report["ok"] and report["fake_apc_dark_after_quit"] and not report["render_thread_alive"]
+
+
+def test_kinetic_sweep_in_app(qapp):
+    import time as _t
+
+    ctl = make_controller()
+    backend = ctl.device.backend
+    ctl.start_effect("kinetic_sweep")
+    assert ctl.window.view._paint_mode          # on-screen pads are touchable
+    assert ctl.window.params.effect_id == "kinetic_sweep"
+    # preset -> params + persisted; reset -> defaults
+    ctl.pattern_action("kinetic_sweep", "preset:ZEN")
+    p = ctl.engine.params_for("kinetic_sweep")
+    assert p["sweep_speed"] == 5 and ctl.settings["effect_params"]["kinetic_sweep"]["trails"] == 95
+    ctl.pattern_action("kinetic_sweep", "reset")
+    assert ctl.engine.params_for("kinetic_sweep")["sweep_speed"] == 40
+    # on-screen touch goes through the same input path as hardware
+    ctl.screen_pad(2, 2, True)
+    deadline = _t.time() + 1
+    while not ctl.engine.interaction.is_held(2, 2) and _t.time() < deadline:
+        _t.sleep(0.01)
+    assert ctl.engine.interaction.is_held(2, 2)
+    ctl.screen_pad(2, 2, False)
+    # hardware press + unplug -> held pads are released
+    backend.press(0)
+    _t.sleep(0.05)
+    backend.connected = False
+    ctl.poll_midi()
+    deadline = _t.time() + 1
+    while ctl.engine.interaction.held and _t.time() < deadline:
+        _t.sleep(0.01)
+    assert not ctl.engine.interaction.held
+    backend.connected = True
+    ctl.poll_midi()
+    assert ctl.device.connected
+    ctl.set_hardware_preview(False)
+    assert ctl.settings["hardware_preview"] is False and ctl.engine.preview_hardware is False
+    ctl.shutdown()
+    assert backend.input_callback is None and not ctl.engine.running
+    assert backend.apc.is_dark()
+    ctl.window.deleteLater()

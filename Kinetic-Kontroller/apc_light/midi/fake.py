@@ -89,8 +89,13 @@ class FakeBackend:
         return _FakeHandle(self, name, is_input=True)
 
     def press(self, note: int, velocity: int = 127) -> None:
+        """Simulate pressing an APC pad/button (arrives like real MIDI input)."""
         if self.input_callback:
             self.input_callback([NOTE_ON, note, velocity])
+
+    def release(self, note: int) -> None:
+        if self.input_callback:
+            self.input_callback([0x80, note, 0])
 
 
 class _FakeHandle:

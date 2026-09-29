@@ -113,7 +113,7 @@ def test_rgb_mode_uses_sysex(rig):
     backend, _, _, engine = rig
     engine.set_output_mode("rgb")
     engine.set_effect("all_on")
-    sysex = [m for m in backend.apc.messages if m[0] == 0xF0]
+    sysex = [m for m in backend.apc.messages if m[:5] == [0xF0, 0x47, 0x7F, 0x4F, 0x24]]
     assert len(sysex) == 1  # 64 identical pads -> one run -> one message
     assert backend.apc.lit == 64
 

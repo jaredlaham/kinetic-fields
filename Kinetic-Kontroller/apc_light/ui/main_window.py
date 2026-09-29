@@ -208,7 +208,11 @@ class MainWindow(QMainWindow):
                                     "Shift + any scene button = Blackout.")
         self.opt_quit = QCheckBox("Blackout when quitting")
         self.opt_quit.setChecked(bool(s["blackout_on_quit"]))
-        for cb in (self.opt_restore, self.opt_buttons, self.opt_quit):
+        self.opt_preview = QCheckBox("Hardware-accurate preview")
+        self.opt_preview.setChecked(bool(s["hardware_preview"]))
+        self.opt_preview.setToolTip("On: the on-screen pads show what the APC can physically display\n"
+                                    "(its colour palette / brightness steps). Off: the ideal colours.")
+        for cb in (self.opt_preview, self.opt_restore, self.opt_buttons, self.opt_quit):
             lay.addWidget(cb)
         lay.addStretch(1)
         scroll.setWidget(inner)
@@ -278,7 +282,9 @@ class MainWindow(QMainWindow):
         self.library.effect_clicked.connect(c.start_effect)
         self.library.favorites_changed.connect(c.set_favorites)
         self.library.shortcut_assigned.connect(c.assign_shortcut)
-        self.view.pad_clicked.connect(lambda x, y, b: c.engine.pad_pressed(x, y, b))
+        self.view.pad_pressed.connect(lambda x, y, b: c.screen_pad(x, y, True, b))
+        self.view.pad_released.connect(lambda x, y: c.screen_pad(x, y, False))
+        self.opt_preview.toggled.connect(c.set_hardware_preview)
         self.refresh_btn.clicked.connect(c.refresh_midi)
         self.port_combo.activated.connect(self._port_chosen)
         self.speed.valueChanged.connect(c.set_speed)
@@ -340,7 +346,7 @@ class MainWindow(QMainWindow):
         if shown is None or self.params.effect_id != shown.id:
             self.params.show_effect(shown, self.ctl.engine.params_for(shown.id) if shown else {})
         self.params_title.setText(f"{shown.name.upper()} SETTINGS" if shown else "SCENE SETTINGS")
-        self.view.set_paint_mode(bool(cls and any(p.key == "pattern" for p in cls.params)))
+        self.view.set_touch_mode(bool(cls and cls.accepts_touch))
 
     def refresh_params(self) -> None:
         eid = self.params.effect_id
@@ -362,11 +368,17 @@ class MainWindow(QMainWindow):
         fps = e.frames_rendered - self._last_frames
         self._last_frames = e.frames_rendered
         dev = self.ctl.device
-        text = f"{fps} fps · {dev.messages_sent} MIDI msgs · {self.ctl.output.mode} · {self.ctl.output.brightness}%"
+        lat = e.last_input_latency_ms
+        lat_txt = f" · touch→LED {lat:.1f} ms" if lat is not None else ""
+        text = (f"{fps} fps · {dev.messages_sent} MIDI out · {self.ctl.midi_input.events_received} in{lat_txt}"
+                f" · {self.ctl.output.mode} · {self.ctl.output.brightness}%")
         self.footer_info.setText(text)
         if self.diagnostics.isVisible():
+            vel = "velocity-sensitive" if self.ctl.midi_input.velocity_sensitive else "fixed velocity"
             self.diagnostics.set_stats(f"port: {dev.port_name or '—'}   render thread: "
-                                       f"{'running' if e.running else 'stopped'}")
+                                       f"{'running' if e.running else 'stopped'}   held pads: "
+                                       f"{len(e.interaction.held)}   max touch→LED: "
+                                       f"{e.max_input_latency_ms:.1f} ms   pads: {vel}")
 
     def closeEvent(self, e) -> None:
         self.ctl.settings["window_geometry"] = bytes(self.saveGeometry().toBase64()).decode()

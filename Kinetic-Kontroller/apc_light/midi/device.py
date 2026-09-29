@@ -19,6 +19,8 @@ from typing import Callable, List, Optional, Protocol, Sequence
 log = logging.getLogger("apc.midi")
 
 CLIENT_NAME = "Kinetic Kontroller"
+# SysEx 0x62 "set mode": 0x00 = default/session mode (0x01 note, 0x02 drum).
+SET_DEFAULT_MODE = [0xF0, 0x47, 0x7F, 0x4F, 0x62, 0x00, 0x01, 0x00, 0xF7]
 _APC_RE = re.compile(r"apc\s*mini\s*mk\s*2", re.I)
 
 
@@ -128,6 +130,8 @@ class MidiDevice:
         self._out: Optional[OutputHandle] = None
         self._in: Optional[OutputHandle] = None
         self.port_name: Optional[str] = None
+        # Raw MIDI-in sink (the app wires this to MidiInputHub.feed). Called on
+        # the MIDI thread; the input port is opened/closed with the output.
         self.input_callback: Optional[Callable[[List[int]], None]] = None
         self.on_connection_changed: Optional[Callable[[bool, Optional[str]], None]] = None
         self.messages_sent = 0
@@ -192,6 +196,9 @@ class MidiDevice:
             self.port_name = name
             self._failed = False
             log.info("APC Mini detected; MIDI output opened: %s", name)
+            # Make sure the APC is in its default (session) mode, where pads
+            # send notes 0-63 and pad LEDs follow our Note On / SysEx messages.
+            self._out.send_message(SET_DEFAULT_MODE)
         except Exception as exc:
             log.error("Could not open MIDI output %r: %s", name, exc)
             self._out = None

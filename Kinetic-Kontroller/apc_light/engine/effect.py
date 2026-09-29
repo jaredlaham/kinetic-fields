@@ -41,6 +41,8 @@ class Param:
     maximum: float = 1
     step: float = 1
     hidden: bool = False  # stored/persisted but not shown as a generic control
+    group: str = ""       # section heading in the settings panel ("SWEEP", "TOUCH")
+    ends: Sequence[str] = ()  # slider end captions, e.g. ("Slow", "Fast")
 
     def coerce(self, value: Any) -> Any:
         """Validate a stored/incoming value, falling back to the default."""
@@ -70,20 +72,20 @@ def ColorParam(key: str, label: str, default: str = "#ff0000") -> Param:
     return Param(key, label, "color", default.lower())
 
 
-def ChoiceParam(key: str, label: str, options: Sequence[str], default: Optional[str] = None) -> Param:
-    return Param(key, label, "choice", default if default is not None else options[0], options=tuple(options))
+def ChoiceParam(key: str, label: str, options: Sequence[str], default: Optional[str] = None, **kw) -> Param:
+    return Param(key, label, "choice", default if default is not None else options[0], options=tuple(options), **kw)
 
 
-def BoolParam(key: str, label: str, default: bool = False) -> Param:
-    return Param(key, label, "bool", default)
+def BoolParam(key: str, label: str, default: bool = False, **kw) -> Param:
+    return Param(key, label, "bool", default, **kw)
 
 
-def IntParam(key: str, label: str, default: int, minimum: int, maximum: int) -> Param:
-    return Param(key, label, "int", default, minimum=minimum, maximum=maximum)
+def IntParam(key: str, label: str, default: int, minimum: int, maximum: int, **kw) -> Param:
+    return Param(key, label, "int", default, minimum=minimum, maximum=maximum, **kw)
 
 
-def FloatParam(key: str, label: str, default: float, minimum: float = 0.0, maximum: float = 1.0) -> Param:
-    return Param(key, label, "float", default, minimum=minimum, maximum=maximum, step=0.01)
+def FloatParam(key: str, label: str, default: float, minimum: float = 0.0, maximum: float = 1.0, **kw) -> Param:
+    return Param(key, label, "float", default, minimum=minimum, maximum=maximum, step=0.01, **kw)
 
 
 def TextParam(key: str, label: str, default: str = "") -> Param:
@@ -100,6 +102,10 @@ class RenderContext:
     ``t`` is *effect time* in seconds. It advances ``speed`` times faster than
     the wall clock, so effects that animate from ``t`` automatically follow the
     global SPEED slider without jumps when it moves.
+
+    ``now`` / ``real_dt`` are wall-clock (``time.monotonic``) values for things
+    that must not follow SPEED, such as touch reactions timed from a pad press.
+    ``interaction`` holds the pads currently held down.
     """
 
     t: float = 0.0
@@ -108,6 +114,9 @@ class RenderContext:
     frame_index: int = 0
     params: Dict[str, Any] = field(default_factory=dict)
     rng: random.Random = field(default_factory=random.Random)
+    now: float = 0.0
+    real_dt: float = 0.0
+    interaction: Any = None  # engine.interaction.InteractionState
 
     def step(self, interval: float) -> int:
         """Integer step counter: increments every ``interval`` effect-seconds."""
@@ -148,6 +157,10 @@ class Effect:
     shortcut: Optional[str] = None
     order: int = 100
     params: List[Param] = []
+    fps: Optional[float] = None     # render rate when animated (None = engine default, 30)
+    accepts_touch: bool = False     # on-screen pads are clickable while this effect runs
+    presets: Dict[str, Dict[str, Any]] = {}  # name -> param values (shown as a preset picker)
+    hint: str = ""                  # short tip shown under the settings
 
     def start(self, ctx: RenderContext) -> None:
         pass
@@ -165,8 +178,19 @@ class Effect:
         """Override when animation depends on a parameter (e.g. Heart 'Beat')."""
         return self.animated
 
+    def on_input(self, ctx: RenderContext, event) -> bool:
+        """A pad was pressed/released (hardware or on-screen visualizer).
+
+        Called on the render thread just before the next frame is rendered,
+        with ``ctx.interaction`` already updated. Return True if the effect's
+        *parameters* changed (they are then saved). The default forwards
+        presses to :meth:`on_pad_pressed` for simple click-to-edit effects."""
+        if getattr(event, "pressed", False):
+            return self.on_pad_pressed(ctx, event.x, event.y, event.button)
+        return False
+
     def on_pad_pressed(self, ctx: RenderContext, x: int, y: int, button: str) -> bool:
-        """Optional: visualizer/hardware pad press. Return True to redraw."""
+        """Optional: pad press. Return True if parameters changed (redraws)."""
         return False
 
     # helpers -------------------------------------------------------------

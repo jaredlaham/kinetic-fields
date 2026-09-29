@@ -36,7 +36,7 @@ jobs:
       - name: End-to-end over real CoreMIDI (virtual APC, unplug + replug)
         run: |
           set -euo pipefail
-          .venv/bin/python tools/virtual_apc.py --seconds 18 --unplug-at 4 --replug-at 6 --report build/vapc.json &
+          .venv/bin/python tools/virtual_apc.py --seconds 18 --unplug-at 4 --replug-at 6 --press-every 0.4 --report build/vapc.json &
           VPID=$!
           sleep 1.5
           BIN="dist/Kinetic Kontroller.app/Contents/MacOS/Kinetic Kontroller"
@@ -54,6 +54,9 @@ jobs:
           e2e = [l for l in open("build/e2e.log") if l.startswith("SELF-TEST ")][0]
           rep = json.loads(e2e[len("SELF-TEST "):])
           assert rep["ok"] and rep["rtmidi_available"], rep
+          # pad presses from the virtual APC arrived over CoreMIDI (+13 simulated ones)
+          assert rep["midi_in_events"] > 13 + 5, rep
+          assert rep["max_touch_latency_ms"] < 20, rep
           print("E2E OK")
           PY
 

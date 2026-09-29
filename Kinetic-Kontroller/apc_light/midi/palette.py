@@ -59,3 +59,78 @@ def nearest_index(rgb: RGB) -> int:
         if d < best_d:
             best, best_d = i, d
     return best
+
+
+# ----------------------------------------------------------------------------
+# Per-pad colour + brightness quantizer
+# ----------------------------------------------------------------------------
+# The Note On *channel* (0..6) sets each pad's brightness to 10..100 %, and the
+# velocity picks one of 127 palette colours, so every pad can show one of
+# 127 x 7 = 889 colour/brightness combinations. Picking the best combination
+# per pad gives far smoother fades than "nearest palette colour at a fixed
+# brightness". Distances are measured in a perceptual (square-root) space.
+
+import math as _math
+
+from .protocol import BRIGHTNESS_LEVELS as _LEVELS
+
+
+def _perceptual(rgb) -> tuple:
+    return tuple(_math.sqrt(c / 255.0) for c in rgb)
+
+
+_CANDIDATES = []
+for _v in range(1, 128):
+    for _ch, _lvl in enumerate(_LEVELS):
+        _eff = tuple(c * _lvl / 100.0 for c in PALETTE[_v])
+        _p = _perceptual(_eff)
+        _m = max(_p) or 1.0
+        _CANDIDATES.append((_v, _ch, _p, (_p[0] / _m, _p[1] / _m, _p[2] / _m)))
+
+_CHROMA_WEIGHT = 2.0  # extra weight on hue/chroma, scaled by brightness (tuned on the retro palette)
+
+
+def perceptual_quantize(rgb: RGB, steps: int = 48) -> RGB:
+    """Snap a drive colour to ``steps`` perceptually even levels per channel.
+
+    Used for both output modes so tiny, invisible changes don't generate MIDI
+    traffic, while slow fades stay smooth to the eye."""
+    out = []
+    for c in rgb:
+        q = round(_math.sqrt(max(0, min(255, c)) / 255.0) * steps) / steps
+        out.append(int(round(q * q * 255)))
+    return (out[0], out[1], out[2])
+
+
+@lru_cache(maxsize=32768)
+def best_note(rgb: RGB) -> tuple:
+    """(velocity, channel) whose effective colour best matches ``rgb`` (a drive
+    colour that already includes global brightness). (0, 0) = off."""
+    if max(rgb) < 3:
+        return (0, 0)
+    tr, tg, tb = _perceptual(rgb)
+    lt = max(tr, tg, tb)
+    cr, cg, cb = tr / lt, tg / lt, tb / lt
+    cw = _CHROMA_WEIGHT * lt * lt
+    best, best_d = (0, 0), 1e9
+    for v, ch, (pr, pg, pb), (qr, qg, qb) in _CANDIDATES:
+        dr, dg, db = tr - pr, tg - pg, tb - pb
+        d = 3 * dr * dr + 4 * dg * dg + 2 * db * db
+        if d >= best_d:
+            continue
+        er, eg, eb = cr - qr, cg - qg, cb - qb
+        d += cw * (er * er + eg * eg + eb * eb)
+        if d < best_d:
+            best, best_d = (v, ch), d
+    # Leave a pad dark rather than light it far too bright.
+    off_d = 3 * tr * tr + 4 * tg * tg + 2 * tb * tb
+    return (0, 0) if off_d < best_d else best
+
+
+def effective_color(velocity: int, channel: int) -> RGB:
+    """Approximate drive colour of a pad lit with (velocity, channel 0..6)."""
+    if velocity <= 0:
+        return (0, 0, 0)
+    lvl = _LEVELS[min(channel, len(_LEVELS) - 1)] / 100.0
+    r, g, b = PALETTE[velocity]
+    return (int(r * lvl), int(g * lvl), int(b * lvl))

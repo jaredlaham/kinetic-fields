@@ -21,13 +21,14 @@ DEFAULTS: Dict[str, Any] = {
     "speed": 50,                  # 0..100, 50 = 1x
     "brightness": 100,            # percent, snapped to the APC's 7 levels
     "output_mode": "palette",     # "palette" (Note On) or "rgb" (SysEx)
-    "favorites": ["rainbow", "mosaic", "creeper", "heart", "kinetic_marquee"],
+    "favorites": ["kinetic_sweep", "rainbow", "mosaic", "creeper", "heart", "kinetic_marquee"],
     "midi_port": "",              # "" = auto-detect the APC mini mk2 Control port
     "shortcuts": {},              # key -> effect id overrides ("1": "rainbow")
     "effect_params": {},          # effect id -> {param: value}
     "scene_buttons": True,        # APC scene launch buttons switch favourites
     "blackout_on_quit": True,
     "show_diagnostics": False,
+    "hardware_preview": True,     # visualizer shows what the APC can actually display
     "window_geometry": None,
 }
 

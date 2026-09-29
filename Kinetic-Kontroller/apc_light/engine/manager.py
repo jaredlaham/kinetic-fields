@@ -12,10 +12,20 @@ Guarantees
   ``set_effect`` so switching is immediate, not "on the next tick".
 * Static effects are rendered only when something changes; the loop then
   sleeps, so an idle app uses ~0 % CPU.
+* MIDI input (pad presses) is queued by the MIDI thread and drained by the
+  render thread right before the next frame; a press wakes the loop at once,
+  so press -> LED is one render (a few ms), independent of the frame rate.
+
+Pipeline, all on the one render thread::
+
+    MIDI IN -> input queue -> InteractionState + Effect.on_input
+            -> Effect.update (compositing its layers) -> Frame (64 pads)
+            -> LedOutput diff -> MIDI OUT (only changed pads)
 """
 
 from __future__ import annotations
 
+import collections
 import logging
 import random
 import threading
@@ -24,7 +34,9 @@ from typing import Any, Callable, Dict, List, Optional, Type
 
 from .effect import Effect, RenderContext
 from .frame import Frame, Pad
+from .interaction import InteractionState
 from .registry import EffectRegistry
+from ..midi.input import PadEvent
 from ..midi.output import LedOutput
 
 log = logging.getLogger("apc.engine")
@@ -57,6 +69,12 @@ class Engine:
         self._params: Dict[str, Dict[str, Any]] = {}
         self.frames_rendered = 0
         self._seq = 0
+        self._inputs: "collections.deque[PadEvent]" = collections.deque()
+        self.interaction = InteractionState()
+        self.preview_hardware = True
+        self._latency_marks: List[float] = []
+        self.last_input_latency_ms: Optional[float] = None
+        self.max_input_latency_ms = 0.0
 
         # Callbacks (may be invoked from the render thread).
         self.on_frame: Optional[FrameCallback] = None
@@ -127,7 +145,8 @@ class Engine:
             log.info("Starting effect: %s", cls.name)
             try:
                 effect = cls()
-                self._ctx = RenderContext(speed=self._speed, params=params, rng=random.Random())
+                self._ctx = RenderContext(speed=self._speed, params=params, rng=random.Random(),
+                                          now=time.monotonic(), interaction=self.interaction)
                 effect.start(self._ctx)
             except Exception as exc:
                 self._report(f"{cls.name} failed to start: {exc}")
@@ -191,6 +210,70 @@ class Engine:
                 self._render_locked(force=True)
         self._wake.set()
 
+    def set_params(self, effect_id: str, values: Dict[str, Any]) -> None:
+        """Set several parameters at once (presets / reset)."""
+        cls = self.registry.get(effect_id)
+        if cls is None:
+            return
+        specs = {p.key: p for p in cls.params}
+        with self._lock:
+            params = self._params.setdefault(effect_id, cls.coerce_params(None))
+            for k, v in values.items():
+                if k in specs:
+                    params[k] = specs[k].coerce(v)
+            if self._effect_cls is cls:
+                self._ctx.params = params
+                self._render_locked(force=True)
+        self._wake.set()
+
+    def set_preview_hardware(self, enabled: bool) -> None:
+        with self._lock:
+            self.preview_hardware = bool(enabled)
+            self._dirty = True
+        self._wake.set()
+
+    # ------------------------------------------------------------------
+    # input (thread-safe; called from the MIDI thread or the GUI)
+    # ------------------------------------------------------------------
+    def post_input(self, event) -> None:
+        """Queue a pad event for the render thread and wake it immediately."""
+        if isinstance(event, PadEvent):
+            self._inputs.append(event)
+            self._wake.set()
+
+    def release_all(self) -> None:
+        """Release every held pad (e.g. the APC was unplugged mid-press)."""
+        with self._lock:
+            held = self.interaction.held_pads()
+        for ev in held:
+            self.post_input(PadEvent(ev.x, ev.y, False, 0, ev.note, source=ev.source))
+
+    def _drain_input_locked(self) -> tuple:
+        """Apply queued input. Returns (had_input, params_changed)."""
+        had = changed = False
+        effect = self._effect
+        self._ctx.now = time.monotonic()
+        while self._inputs:
+            ev = self._inputs.popleft()
+            had = True
+            self.interaction.apply(ev)
+            if ev.pressed and ev.source == "hardware":
+                self._latency_marks.append(ev.time)
+            if effect is not None:
+                try:
+                    changed = bool(effect.on_input(self._ctx, ev)) or changed
+                except Exception:
+                    log.exception("%s input handler failed", self._effect_cls.name if self._effect_cls else "?")
+        return had, changed
+
+    def _notify_params(self) -> None:
+        cls = self._effect_cls
+        if cls is not None and self.on_params_changed:
+            try:
+                self.on_params_changed(cls.id, dict(self._ctx.params))
+            except Exception:
+                log.exception("params callback failed")
+
     def set_brightness(self, percent: int) -> None:
         with self._lock:
             self.output.set_brightness(percent)
@@ -215,20 +298,14 @@ class Engine:
         self._wake.set()
 
     def pad_pressed(self, x: int, y: int, button: str = "left") -> None:
+        """Synchronous press+release (on-screen click, tests)."""
         with self._lock:
-            effect, cls = self._effect, self._effect_cls
-            if effect is None or cls is None:
-                return
-            try:
-                changed = effect.on_pad_pressed(self._ctx, x, y, button)
-            except Exception:
-                log.exception("%s pad handler failed", cls.name)
-                return
+            self._inputs.append(PadEvent(x, y, True, 127, source="screen", button=button))
+            self._inputs.append(PadEvent(x, y, False, 0, source="screen", button=button))
+            had, changed = self._drain_input_locked()
+            self._render_locked(force=True)
             if changed:
-                self._render_locked(force=True)
-                params = dict(self._ctx.params)
-        if changed and self.on_params_changed:
-            self.on_params_changed(cls.id, params)
+                self._notify_params()
 
     # ------------------------------------------------------------------
     # previews (thumbnails): separate instance, never touches the hardware
@@ -240,7 +317,8 @@ class Engine:
             return frame
         try:
             effect = cls()
-            ctx = RenderContext(t=0.0, params=self.params_for(effect_id), rng=random.Random(7))
+            ctx = RenderContext(t=0.0, params=self.params_for(effect_id), rng=random.Random(7),
+                                now=time.monotonic(), interaction=InteractionState())
             effect.start(ctx)
             ctx.t, ctx.dt = t, t
             effect.update(ctx, frame)
@@ -254,12 +332,24 @@ class Engine:
     # render loop
     # ------------------------------------------------------------------
     def _run(self) -> None:
-        interval = 1.0 / self.fps
+        next_frame = time.monotonic()
         while not self._stop.is_set():
             with self._lock:
-                animated = self._render_locked(force=self._dirty)
-            # Animated: sleep one tick. Static/idle: sleep until woken.
-            self._wake.wait(interval if animated else 0.5)
+                had_input, changed = self._drain_input_locked()
+                animated = self._render_locked(force=self._dirty or had_input)
+                if changed:
+                    self._notify_params()
+                fps = (self._effect.fps if self._effect is not None and self._effect.fps else None) or self.fps
+            now = time.monotonic()
+            if animated:
+                # Deadline pacing: a steady frame rate regardless of render time;
+                # input wakes the loop early without disturbing the cadence much.
+                next_frame = max(next_frame + 1.0 / fps, now)
+                timeout = next_frame - now
+            else:
+                timeout = 0.5
+            if timeout > 0:
+                self._wake.wait(timeout)
             self._wake.clear()
 
     def _render_locked(self, force: bool) -> bool:
@@ -272,6 +362,7 @@ class Engine:
         rendered = False
         if effect is not None and cls is not None:
             ctx = self._ctx
+            ctx.now, ctx.real_dt = now, real_dt
             animated = effect.is_animated(ctx.params)
             if animated or force:
                 ctx.dt = real_dt * ctx.speed if not force or animated else 0.0
@@ -291,6 +382,12 @@ class Engine:
                     self._emit_effect_changed()
         if rendered or self._dirty:
             self.output.show(self._frame.pads)
+            if self._latency_marks:
+                done = time.monotonic()
+                lat = max(done - t for t in self._latency_marks) * 1000.0
+                self._latency_marks.clear()
+                self.last_input_latency_ms = lat
+                self.max_input_latency_ms = max(self.max_input_latency_ms, lat)
             self._emit_frame_locked()
         self._dirty = False
         return animated
@@ -303,7 +400,8 @@ class Engine:
             # lets the receiver drop stale ones.
             self._seq += 1
             try:
-                cb(self._seq, [self.output.display_pad(p) for p in self._frame.pads])
+                hw = self.preview_hardware
+                cb(self._seq, [self.output.display_pad(p, hw) for p in self._frame.pads])
             except Exception:
                 log.exception("frame callback failed")
 

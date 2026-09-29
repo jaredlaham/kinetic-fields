@@ -22,8 +22,8 @@ from ..engine.frame import Pad
 from ..engine.manager import Engine
 from ..engine.registry import EffectRegistry
 from ..midi.device import MidiDevice
+from ..midi.input import ButtonEvent, MidiInputHub, PadEvent
 from ..midi.output import LedOutput
-from ..midi.protocol import NOTE_OFF, NOTE_ON, PAD_COUNT, SCENE_BUTTON_FIRST, SHIFT_BUTTON, note_to_xy
 from ..settings import paths
 from ..settings.store import Settings
 
@@ -64,7 +64,7 @@ class _Bridge(QObject):
     effect_changed = Signal(object)
     params_changed = Signal(str, object)
     error = Signal(str)
-    midi_in = Signal(object)
+    input_event = Signal(object)
 
 
 # ----------------------------------------------------------------------------
@@ -89,18 +89,25 @@ class Controller(QObject):
         self.engine = Engine(self.registry, self.output)
         self.engine.load_params(s["effect_params"])
         self.engine.set_speed(s["speed"])
+        self.engine.preview_hardware = bool(s["hardware_preview"])
 
         self._bridge = _Bridge()
         self._bridge.frame.connect(self._on_frame)
         self._bridge.effect_changed.connect(self._on_effect_changed)
         self._bridge.params_changed.connect(self._on_params_changed)
         self._bridge.error.connect(self._on_error)
-        self._bridge.midi_in.connect(self._on_midi_in)
+        self._bridge.input_event.connect(self._on_input)
         self.engine.on_frame = self._bridge.frame.emit
         self.engine.on_effect_changed = self._bridge.effect_changed.emit
         self.engine.on_params_changed = self._bridge.params_changed.emit
         self.engine.on_error = self._bridge.error.emit
-        self.device.input_callback = self._bridge.midi_in.emit
+        # MIDI IN: APC -> hub -> (engine: pad events, render thread)
+        #                      -> (GUI: button events, Qt thread)
+        self.midi_input = MidiInputHub()
+        self.device.input_callback = self.midi_input.feed
+        self.midi_input.subscribe(self.engine.post_input)
+        self.midi_input.subscribe(
+            lambda ev: None if isinstance(ev, PadEvent) else self._bridge.input_event.emit(ev))
         self.device.on_connection_changed = self._on_connection_changed
 
         self._thumbs: Dict[str, Any] = {}
@@ -221,9 +228,35 @@ class Controller(QObject):
         self._thumb_timer.start()
 
     def pattern_action(self, effect_id: str, action: str) -> None:
-        params = self.engine.params_for(effect_id)
-        fill = params.get("brush", "#ffffff") if action == "fill" else "#000000"
-        self.set_param(effect_id, "pattern", [fill] * 64)
+        """Buttons in the settings panel: presets, reset, pattern tools."""
+        cls = self.registry.get(effect_id)
+        if cls is None:
+            return
+        if action.startswith("preset:"):
+            name = action.split(":", 1)[1]
+            if name in cls.presets:
+                log.info("%s preset: %s", cls.name, name)
+                self.engine.set_params(effect_id, cls.presets[name])
+        elif action == "reset":
+            log.info("%s: reset to defaults", cls.name)
+            keep = {k: v for k, v in self.engine.params_for(effect_id).items() if k == "pattern"}
+            self.engine.set_params(effect_id, {**cls.default_params(), **keep})
+        elif action in ("clear", "fill"):
+            params = self.engine.params_for(effect_id)
+            fill = params.get("brush", "#ffffff") if action == "fill" else "#000000"
+            self.engine.set_params(effect_id, {"pattern": [fill] * 64})
+        else:
+            return
+        self._store_params(effect_id)
+        self.window.refresh_params()
+
+    def screen_pad(self, x: int, y: int, pressed: bool, button: str = "left") -> None:
+        """A pad clicked on the on-screen APC: treated like a hardware press."""
+        self.engine.post_input(PadEvent(x, y, pressed, 100 if pressed else 0, source="screen", button=button))
+
+    def set_hardware_preview(self, enabled: bool) -> None:
+        self.engine.set_preview_hardware(enabled)
+        self.set_option("hardware_preview", bool(enabled))
 
     def set_option(self, key: str, value: Any) -> None:
         self.settings[key] = value
@@ -292,29 +325,25 @@ class Controller(QObject):
             self._update_scene_led()
         else:
             log.info("APC disconnected")
+            self._shift = False
+            self.engine.release_all()  # no pad stays "held" after an unplug
         self.window.set_connection(connected, port, self.device.backend.available)
 
-    def _on_midi_in(self, msg: List[int]) -> None:
-        if len(msg) < 3:
+    def _on_input(self, ev) -> None:
+        """Non-pad input (GUI thread). Pads go straight to the engine."""
+        if not isinstance(ev, ButtonEvent):
             return
-        status, note, vel = msg[0] & 0xF0, msg[1], msg[2]
-        pressed = status == NOTE_ON and vel > 0
-        if note == SHIFT_BUTTON:
-            self._shift = pressed
+        if ev.kind == "shift":
+            self._shift = ev.pressed
             return
-        if not pressed:
+        if not ev.pressed or ev.kind != "scene":
             return
-        if SCENE_BUTTON_FIRST <= note < SCENE_BUTTON_FIRST + 8:
-            if self._shift:
-                self.blackout()
-            elif self.settings["scene_buttons"]:
-                favs = self.favorite_ids()
-                i = note - SCENE_BUTTON_FIRST
-                if i < len(favs):
-                    self.start_effect(favs[i])
-        elif note < PAD_COUNT:
-            x, y = note_to_xy(note)
-            self.engine.pad_pressed(x, y, "toggle")
+        if self._shift:
+            self.blackout()
+        elif self.settings["scene_buttons"]:
+            favs = self.favorite_ids()
+            if ev.index < len(favs):
+                self.start_effect(favs[ev.index])
 
     # -- engine signals (GUI thread) --------------------------------------------
     def _on_frame(self, seq: int, pads: List[Pad]) -> None:
@@ -357,7 +386,8 @@ class Controller(QObject):
         self._save_timer.stop()
         self.settings.save()
         self.engine.shutdown(blackout=bool(self.settings["blackout_on_quit"]))
-        self.device.close()
+        self.device.close()          # closes MIDI in + out; no more callbacks
+        self.midi_input.clear()
         log.info("Shutdown complete")
 
 
@@ -414,6 +444,14 @@ def run_self_test(app: QApplication, ctl: Controller, seconds: float) -> None:
     steps += [lambda: ctl.set_speed(100), lambda: ctl.start_effect("rainbow_wave"), lambda: ctl.set_brightness(25),
               lambda: ctl.set_output_mode("rgb"), lambda: ctl.start_effect("mosaic"),
               lambda m=ctl.settings["output_mode"]: ctl.set_output_mode(m), lambda: ctl.blackout(),
+              lambda: ctl.start_effect("kinetic_sweep")]
+    # Pad presses through the real MIDI-in path (hub -> engine), overlapping.
+    for i, note in enumerate((27, 36, 0, 63, 7, 56, 20, 43)):
+        steps.append(lambda n=note: ctl.midi_input.feed([0x90, n, 110]))
+        if i % 2:
+            steps.append(lambda n=note: ctl.midi_input.feed([0x80, n, 0]))
+    steps += [lambda: ctl.pattern_action("kinetic_sweep", "preset:PERFORMANCE"),
+              lambda: ctl.midi_input.feed([0x90, 28, 127]),
               lambda: ctl.start_effect("kinetic_marquee")]  # left running: quit must clean it up
     started = time.monotonic()
     delay = max(10, int(seconds * 1000 * 0.7 / max(1, len(steps))))
@@ -427,6 +465,9 @@ def run_self_test(app: QApplication, ctl: Controller, seconds: float) -> None:
             report["frames_rendered"] = ctl.engine.frames_rendered
             report["active_before_quit"] = ctl.engine.active_id
             report["errors"] = ctl.errors
+            report["midi_in_events"] = ctl.midi_input.events_received
+            report["max_touch_latency_ms"] = round(ctl.engine.max_input_latency_ms, 2)
+            report["held_after_switch"] = len(ctl.engine.interaction.held)
             report["elapsed"] = round(elapsed, 2)
             QTimer.singleShot(300, app.quit)
             app.aboutToQuit.connect(lambda: _finish_report(ctl, report))

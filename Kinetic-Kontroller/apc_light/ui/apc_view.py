@@ -38,7 +38,8 @@ def pad_color(pad: Pad, now: float) -> Optional[QColor]:
 
 
 class ApcView(QWidget):
-    pad_clicked = Signal(int, int, str)  # x, y, "left"/"right"
+    pad_pressed = Signal(int, int, str)  # x, y, "left"/"right"
+    pad_released = Signal(int, int)
 
     def __init__(self, parent=None) -> None:
         super().__init__(parent)
@@ -74,10 +75,15 @@ class ApcView(QWidget):
         self._connected = connected
         self.update()
 
-    def set_paint_mode(self, enabled: bool) -> None:
+    def set_touch_mode(self, enabled: bool) -> None:
+        """Pads are clickable (paint / touch reactions) for the active effect."""
+        if not enabled:
+            self._release_drag()
         self._paint_mode = enabled
-        self.setCursor(Qt.CrossCursor if enabled else Qt.ArrowCursor)
+        self.setCursor(Qt.PointingHandCursor if enabled else Qt.ArrowCursor)
         self.update()
+
+    set_paint_mode = set_touch_mode
 
     # -- geometry ----------------------------------------------------------
     def _layout(self):
@@ -211,7 +217,7 @@ class ApcView(QWidget):
         if hit:
             self._drag_button = "right" if e.button() == Qt.RightButton else "left"
             self._last_drag = hit
-            self.pad_clicked.emit(hit[0], hit[1], self._drag_button)
+            self.pad_pressed.emit(hit[0], hit[1], self._drag_button)
 
     def mouseMoveEvent(self, e) -> None:
         hit = self._hit(e.position())
@@ -220,10 +226,18 @@ class ApcView(QWidget):
             if self._paint_mode:
                 self.update()
         if self._drag_button and hit and hit != self._last_drag:
+            # Dragging = release the previous pad, press the new one.
+            if self._last_drag:
+                self.pad_released.emit(*self._last_drag)
             self._last_drag = hit
-            self.pad_clicked.emit(hit[0], hit[1], self._drag_button)
+            self.pad_pressed.emit(hit[0], hit[1], self._drag_button)
 
     def mouseReleaseEvent(self, _e) -> None:
+        self._release_drag()
+
+    def _release_drag(self) -> None:
+        if self._last_drag:
+            self.pad_released.emit(*self._last_drag)
         self._drag_button = None
         self._last_drag = None
 

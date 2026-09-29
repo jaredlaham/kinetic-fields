@@ -13,6 +13,30 @@ LEDs at a time, and **BLACKOUT** (or the `0` key) turns everything off.
 - Diagnostics panel in the app, so you never need Terminal
 - LEDs stay off at launch unless you turn on "Start last scene at launch"
 
+## Kinetic Sweep (interactive)
+
+A soft band of retro-rainbow light sweeps across the pads. It bounces by default,
+easing into each edge and turning around smoothly, and can leave fading trails.
+Every pad you press on the APC, or click on screen, starts its own reaction from
+that pad:
+
+| Reaction | Look |
+|---|---|
+| Ripple | origin flashes, then a ring expands 2–4 pads |
+| Horizontal / Vertical Pulse | energy races along the row / column to both edges |
+| Bloom | soft glow around the pad that melts back into the sweep |
+| Spark | instant pale flash with a quick burst into the neighbouring pads, built for fast playing |
+
+- **Overlap.** Reactions overlap: each press is its own event, and expired ones are removed automatically.
+- **Hold.** A held pad stays bright and breathes gently; on release it fades back into the sweep.
+- **Controls.** SWEEP: Speed, Intensity, Trails, Direction (Bounce, Left → Right, Right → Left, Randomized).
+  TOUCH: Reaction, Touch Intensity, Touch Decay (0.15–2 s), Velocity, Color Wake.
+- **Presets.** OXI, RETRO, NEON, AMBIENT, PERFORMANCE and ZEN. **RESET** restores the defaults.
+- **Velocity** is used subtly if the pads send it. APC mini mk2 pads usually send a fixed 127,
+  and that's handled gracefully. Diagnostics shows which one your unit does.
+- **Color Wake.** Touches briefly tint the sweep around them, and the tint drifts away from the pad.
+- **Best look.** Use **LED OUTPUT → RGB** for the smoothest fades. Palette mode works too; see below.
+
 ## Install
 
 ```bash
@@ -52,7 +76,7 @@ QT_QPA_PLATFORM=offscreen .venv/bin/python -m pytest -q tests
 
 | Key | Action |
 |---|---|
-| `1` Rainbow · `2` Mosaic · `3` Creeper · `4` Heart · `5` Kinetic Marquee | start scene |
+| `1` Rainbow · `2` Mosaic · `3` Creeper · `4` Heart · `5` Kinetic Marquee · `6` Kinetic Sweep | start scene |
 | `0` | Blackout |
 | ⌘R | Refresh MIDI |
 | ⌘B | Blackout |
@@ -101,6 +125,22 @@ In the built app, drop the same kind of file into
 `~/Library/Application Support/Kinetic Kontroller/effects/` and restart the app. A broken
 effect file is skipped and logged. It never stops the app.
 
+## What the APC mini mk2 can display
+
+| Mechanism | Per pad | Used for |
+|---|---|---|
+| Note On velocity → 128-colour palette | 127 colours | palette mode |
+| Note On channel 0–6 → brightness 10/25/50/65/75/90/100 % | 7 levels, **per pad** | palette mode (fades) |
+| Note On channel 7–10 / 11–15 → pulse / blink, done by the APC | 9 behaviours | Hardware Pulse |
+| SysEx `0x24` → 24-bit RGB, ≤ 32 pads per message | any colour | RGB mode (smoothest) |
+
+In **palette mode**, each pad gets the best of the 127 × 7 colour-and-brightness combinations
+for the colour the renderer asks for, so fades use the APC's real per-pad brightness levels.
+In **RGB mode**, the true colour is sent in bulk SysEx runs. In both modes, colours are snapped
+to perceptually even steps before diffing, so invisible micro-changes never go out over MIDI.
+**Hardware-accurate preview** (inspector) makes the on-screen APC show those quantized colours.
+Switch it off to see the renderer's ideal colours instead.
+
 ## How it works
 
 ```
@@ -114,6 +154,10 @@ apc_light/
   midi/palette.py      the APC's 128-color velocity palette
   midi/output.py       frame → MIDI, sending only changed pads
   midi/device.py       port detection, hot-plug, thread-safe sending (python-rtmidi / CoreMIDI)
+  midi/input.py        MIDI IN: decode APC pads/buttons/faders -> events -> subscribers
+  engine/interaction.py  which pads are held (shared by all interactive effects)
+  engine/compositor.py   float canvas, blend modes, retro palette, gamma -> LED drive
+  engine/touch.py        reusable touch reactions (ripple, pulses, bloom, spark)
   effects/             one file per effect
   settings/            JSON settings in Application Support
   ui/                  PySide6 (Qt) window, APC visualizer, scene library, controls
@@ -123,6 +167,19 @@ apc_light/
   per-effect threads or processes. Switching effects takes the same lock the render loop
   holds while it renders *and sends*. Once a new scene is clicked, the old one can never send
   another message, and the new scene's first frame goes out right away.
+- **Input.** APC pad MIDI → `MidiInputHub` → the engine's input queue, which wakes the render
+  thread immediately → `InteractionState` + `Effect.on_input` → next frame. Press → LED is one
+  render, measured at about 1–6 ms. The on-screen APC posts the same events, so clicking pads works
+  like pressing them. Buttons go to the GUI (scene buttons, Shift).
+
+  ```
+  MIDI IN → hub → engine input queue → interaction state → effect (layers) → compositor
+          → 64-pad frame → diff vs last frame → MIDI OUT (changed pads only)
+  ```
+  Interactive effects never talk to MIDI. They draw layers into a `Canvas`, and the engine
+  alone sends. To make an effect interactive, set `accepts_touch = True` and implement
+  `on_input(ctx, event)`; `ctx.interaction.held` has the held pads. `engine/touch.py` gives you
+  the reactions for free.
 - **Protocol** (from the official *APC mini mk2 Communication Protocol*): pads are notes 0–63,
   with 0 at the bottom left. Note On velocity picks a palette color. The Note On channel picks
   the behavior: 0–6 are solid at 10/25/50/65/75/90/100 % brightness, 7–10 pulse, and 11–15 blink.
@@ -152,5 +209,24 @@ The automated tests use a simulated APC and a virtual CoreMIDI APC. These checks
 12. Unplug the APC while a scene is running. The header shows *Not Connected*. Plug it back in: within about 2 s it shows *Connected* and the scene resumes.
 13. Start **Rainbow Wave** and quit with ⌘Q. The APC goes dark.
 14. Relaunch. Favorites, speed, brightness and colors are remembered, and the LEDs stay off.
+
+### Kinetic Sweep on the hardware
+
+1. Pick **Kinetic Sweep** (key `6`) and don't touch anything. The band glides left and right,
+   slows into each edge and turns around without jumping. Try Speed from Slow to Fast and Trails from Off to High.
+2. Tap one pad. It lights **immediately**, and the ripple spreads 2–4 pads and fades back into the sweep.
+3. Tap a pad rapidly, about 8 times per second. Every tap reacts and nothing stutters.
+4. Press two or three pads at once, or ~150 ms apart. All reactions play and overlap.
+5. Hold a pad for 3 s. It stays bright and gently breathes. Release: it fades out in about ¼ s.
+6. Tap all four **corners** and edge pads with each **Reaction** style. They look right and nothing spills oddly.
+7. Watch Diagnostics (footer): **touch→LED** should read under 20 ms. **pads:** shows whether your unit
+   is velocity-sensitive; if it says "fixed velocity", the Velocity switch has no effect.
+8. Compare **LED OUTPUT → Palette** and **RGB**. RGB should fade more smoothly; palette mode
+   should still look clean, with dim trails, not flicker. Toggle **Hardware-accurate preview**
+   to compare the on-screen APC with the real one.
+9. While pads are animating, switch to another scene, then press **BLACKOUT**. Both take over instantly, with no leftovers.
+10. Unplug the APC while holding a pad, then replug it. The sweep resumes and no pad stays stuck bright.
+11. Try every preset. **PERFORMANCE** should feel tight for rhythmic tapping and **ZEN** very slow.
+12. Quit while pressing pads. The APC goes dark.
 
 If something looks wrong, open the **Diagnostics** panel (footer) and use **Copy Log**.

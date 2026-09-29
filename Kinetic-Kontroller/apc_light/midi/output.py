@@ -3,14 +3,19 @@
 Two output modes:
 
 ``palette``  (default, the classic method)
-    Every lit pad is a Note On whose velocity is the nearest built-in palette
-    colour. Global brightness is the Note On *channel* (0..6 = 10..100 %),
-    exactly as the protocol specifies.
+    Every lit pad is a Note On. For each pad the best (palette colour,
+    brightness channel 0..6) pair is chosen for the requested colour, so dim
+    and fading colours use the APC's per-pad brightness levels instead of
+    collapsing to a few palette entries. Global brightness scales the target
+    colour first (the result still only uses the official channels).
 
 ``rgb``
     Solid pads are sent as true 24-bit colour via SysEx 0x24, batched into
     contiguous runs (max 32 blocks per message). Global brightness scales the
     RGB values to the same seven official levels.
+
+Colours are snapped to perceptually even steps before diffing, so invisible
+sub-step changes in smooth animations never produce MIDI traffic.
 
 In both modes, pulsing/blinking pads use Note On behaviour channels (7..15)
 so the APC animates them itself.
@@ -26,7 +31,7 @@ from typing import List, Optional, Sequence, Tuple
 
 from ..engine.frame import OFF, Pad, scale
 from .device import MidiDevice
-from .palette import PALETTE, nearest_index
+from .palette import PALETTE, best_note, effective_color, nearest_index, perceptual_quantize
 from .protocol import (
     BLINK_CHANNELS,
     BRIGHTNESS_FULL_CHANNEL,
@@ -51,6 +56,16 @@ OUTPUT_MODES = ("palette", "rgb")
 
 WireState = Optional[Tuple]  # None = unknown, ("off",), ("note", vel, ch), ("rgb", (r,g,b))
 _OFF_STATE = ("off",)
+
+
+def _screen(drive: Tuple[int, int, int]) -> Tuple[int, int, int]:
+    """LED drive colour -> on-screen colour. LEDs look brighter than their
+    drive level, so lift brightness perceptually while keeping the hue."""
+    m = max(drive)
+    if m <= 0:
+        return (0, 0, 0)
+    k = math.sqrt(m / 255.0) * 255.0 / m
+    return scale(drive, k)
 
 
 class LedOutput:
@@ -87,24 +102,34 @@ class LedOutput:
             return ("note", nearest_index(pad.rgb), PULSE_CHANNELS.get(pad.rate, 9))
         if pad.mode == "blink":
             return ("note", nearest_index(pad.rgb), BLINK_CHANNELS.get(pad.rate, 14))
+        scaled = scale(pad.rgb, self.brightness / 100.0)
         if self.mode == "rgb":
-            rgb = scale(pad.rgb, self.brightness / 100.0)
-            return ("rgb", rgb) if rgb != (0, 0, 0) else _OFF_STATE
-        return ("note", nearest_index(pad.rgb), self._channel)
+            target = perceptual_quantize(scaled)
+            return ("rgb", target) if max(target) > 0 else _OFF_STATE
+        # The palette can't show finer steps than this anyway; a coarse key
+        # keeps the quantizer cache hit-rate near 100 % during animations.
+        vel, ch = best_note(perceptual_quantize(scaled, 24))
+        return ("note", vel, ch) if vel else _OFF_STATE
 
-    def display_pad(self, pad: Pad) -> Pad:
-        """What the physical pad will look like (for the visualizer)."""
+    def display_pad(self, pad: Pad, hardware: bool = True) -> Pad:
+        """What the physical pad will look like, for the visualizer.
+
+        ``hardware=True`` shows what the APC can actually display (palette /
+        brightness quantization); ``False`` shows the renderer's ideal colour
+        (with global brightness)."""
+        if pad.is_off:
+            return OFF
+        if not hardware:
+            return Pad(_screen(scale(pad.rgb, self.brightness / 100.0)), pad.mode, pad.rate)
         state = self.wire_state(pad)
         if state[0] == "off":
             return OFF
         if state[0] == "rgb":
-            # Perceptual boost so dimmed LEDs stay readable on screen.
-            return Pad(scale(pad.rgb, math.sqrt(self.brightness / 100.0)))
+            return Pad(_screen(state[1]))
         vel, ch = state[1], state[2]
-        rgb = PALETTE[vel]
         if ch <= BRIGHTNESS_FULL_CHANNEL:
-            rgb = scale(rgb, math.sqrt(BRIGHTNESS_LEVELS[ch] / 100.0))
-        return Pad(rgb, pad.mode, pad.rate)
+            return Pad(_screen(effective_color(vel, ch)))
+        return Pad(PALETTE[vel], pad.mode, pad.rate)
 
     # -- sending ------------------------------------------------------------
     def show(self, pads: Sequence[Pad]) -> None:

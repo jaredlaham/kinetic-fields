@@ -41,6 +41,9 @@ QLabel#CtlLabel {{ color: {TEXT_DIM}; font-size: 10px; font-weight: 700; letter-
 QLabel#CtlValue {{ color: {ACCENT}; font-family: {MONO}; font-size: 11px; }}
 QLabel#NowTitle {{ font-size: 22px; font-weight: 700; letter-spacing: 4px; }}
 QLabel#NowSub {{ color: {TEXT_DIM}; font-size: 12px; }}
+QLabel#Group {{ color: {TEXT}; font-size: 11px; font-weight: 800; letter-spacing: 3px; padding-top: 6px;
+               border-bottom: 1px solid {BORDER}; padding-bottom: 4px; }}
+QPushButton#Preset {{ font-size: 11px; font-weight: 700; letter-spacing: 1px; padding: 5px 4px; }}
 QLabel#Hint {{ color: {TEXT_FAINT}; font-size: 11px; }}
 QLabel#Mono {{ font-family: {MONO}; color: {TEXT_DIM}; font-size: 11px; }}
 

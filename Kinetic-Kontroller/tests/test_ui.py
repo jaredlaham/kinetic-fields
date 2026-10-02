@@ -208,3 +208,58 @@ def test_topo_background_opacity_and_custom_svg(ctl, tmp_path):
     assert "Could not load" in ins.topo_source.text()
     ctl.set_topo_svg("")
     assert ctl.topo_path().endswith(("topo.svg", "topo_custom.svg")) and "Default" in ins.topo_source.text()
+
+
+def test_assign_scenes_to_apc_scene_buttons(ctl):
+    from PySide6.QtCore import QPointF
+
+    b, view, ins, lib = ctl.device.backend, ctl.window.view, ctl.window.inspector, ctl.window.library
+    # defaults: scene buttons hold favourites 1-6, buttons 7-8 empty
+    assert ctl.scene_slots()[:2] == ["kinetic_sweep", "rainbow"] and ctl.scene_slots()[6:] == ["", ""]
+    # assign from the inspector: Pong on button 8 -> it becomes a favourite
+    ins._scene_rows[7].combo.setCurrentText("Pong")
+    assert ctl.scene_slots()[7] == "pong" and "pong" in ctl.settings["favorites"]
+    assert lib.list.scene_button_of("pong") == 7
+    b.press(0x77)                                   # hardware scene button 8
+    assert ctl.engine.active_id == "pong"
+    # a scene lives on one button: moving Pong to button 1 replaces Kinetic Sweep and frees 8
+    ctl.assign_scene_button(0, "pong")
+    assert ctl.scene_slots()[0] == "pong" and ctl.scene_slots()[7] == ""
+    assert ins._scene_rows[0].combo.currentText() == "Pong"
+    b.press(0x77)                                   # empty button does nothing
+    assert ctl.engine.active_id == "pong"
+    # the green LED follows the assigned button
+    ctl.start_effect("pong")
+    settle(0.15)
+    assert ctl.engine.output.scene_states[0] in (1, 0, 2)   # Pong draws its own score LEDs
+    ctl.start_effect("rainbow")
+    settle(0.15)
+    assert ctl.engine.output.scene_states == [0, 1, 0, 0, 0, 0, 0, 0]
+    # on-screen scene buttons: click starts, right-click menu assigns
+    view.resize(900, 700)
+    _, grid, pitch = view._geometry()
+    centre = view._pad_rect(8, 2, grid, pitch).center()
+    assert view._scene_hit(QPointF(centre)) == 2
+    clicked = []
+    view.scene_clicked.connect(clicked.append)
+    from PySide6.QtCore import QEvent, Qt
+    from PySide6.QtGui import QMouseEvent
+    view.mousePressEvent(QMouseEvent(QEvent.MouseButtonPress, centre, centre, Qt.LeftButton, Qt.LeftButton, Qt.NoModifier))
+    assert clicked == [2] and ctl.engine.active_id == ctl.scene_slots()[2]
+    ctl.start_effect("fire_hands")
+    menu = ctl.window.scene_button_menu(6)
+    assign = next(a for a in menu.actions() if a.text().startswith("Assign"))
+    assign.trigger()
+    assert ctl.scene_slots()[6] == "fire_hands"
+    # removing a favourite frees its button; adding one fills the first free button
+    ctl.toggle_favorite("fire_hands")
+    assert "fire_hands" not in ctl.scene_slots()
+    ctl.toggle_favorite("fireworks")
+    assert ctl.scene_slots().index("fireworks") == 6
+    clear = next(a for a in ctl.window.scene_button_menu(6).actions() if a.text() == "Clear Button")
+    clear.trigger()
+    assert ctl.scene_slots()[6] == "" and "fireworks" in ctl.settings["favorites"]
+    # persisted
+    ctl.settings.save()
+    from apc_light.settings.store import Settings
+    assert Settings(ctl.settings.path)["scene_slots"] == ctl.scene_slots()

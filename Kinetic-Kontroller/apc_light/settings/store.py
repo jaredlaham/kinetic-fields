@@ -14,8 +14,10 @@ from . import paths
 
 log = logging.getLogger("apc.settings")
 
+SCENE_SLOTS = 8
+
 DEFAULTS: Dict[str, Any] = {
-    "version": 2,
+    "version": 3,
     "last_effect": None,          # id of the last effect that was started
     "restore_on_launch": False,   # start last_effect automatically at launch
     "speed": 50,                  # 0..100, 50 = 1x
@@ -26,6 +28,7 @@ DEFAULTS: Dict[str, Any] = {
     "shortcuts": {},              # key -> effect id overrides ("1": "rainbow")
     "effect_params": {},          # effect id -> {param: value}
     "scene_buttons": True,        # APC scene launch buttons switch favourites
+    "scene_slots": [],            # 8 effect ids ("" = empty) for scene buttons 1-8 (top = 1)
     "blackout_on_quit": True,
     "show_diagnostics": False,
     "hardware_preview": True,     # visualizer shows what the APC can actually display
@@ -43,6 +46,7 @@ class Settings:
         self.path = Path(path) if path else paths.settings_file()
         self.data: Dict[str, Any] = copy.deepcopy(DEFAULTS)
         self.load()
+        self._normalize_slots()
 
     def load(self) -> None:
         try:
@@ -78,6 +82,15 @@ class Settings:
             self.data["favorites"] = ["kinetic_sweep"] + favs
             log.info("Settings migrated to v2: Kinetic Sweep is favorite #1")
         self.data["version"] = DEFAULTS["version"]
+
+    def _normalize_slots(self) -> None:
+        slots = self.data.get("scene_slots")
+        if not (isinstance(slots, list) and len(slots) == SCENE_SLOTS):
+            # v3: scene buttons get their own assignments, seeded from favourites 1-8
+            favs = [f for f in self.data["favorites"] if isinstance(f, str)][:SCENE_SLOTS]
+            self.data["scene_slots"] = favs + [""] * (SCENE_SLOTS - len(favs))
+        else:
+            self.data["scene_slots"] = [v if isinstance(v, str) else "" for v in slots]
 
     def save(self) -> None:
         self.path.parent.mkdir(parents=True, exist_ok=True)

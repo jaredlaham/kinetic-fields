@@ -65,6 +65,7 @@ class Inspector(QWidget):
     refresh_midi = Signal()
     shortcut_assigned = Signal(str, str)
     shortcut_cleared = Signal(str)
+    scene_button_assigned = Signal(int, str)   # button 0..7, effect id ("" = clear)
     blackout = Signal()
     ui_changed = Signal(str, object)
     copy_log = Signal()
@@ -127,8 +128,9 @@ class Inspector(QWidget):
                              "RGB: true 24-bit colour via SysEx (smoothest fades).")
         sec.add(self.mode)
         self.opt_restore = ToggleRow("Start last scene at launch", bool(s["restore_on_launch"]))
-        self.opt_buttons = ToggleRow("APC scene buttons pick favorites", bool(s["scene_buttons"]),
-                                     "Scene buttons 1–8 start favorites 1–8. Shift + scene button = Blackout.")
+        self.opt_buttons = ToggleRow("APC scene buttons start scenes", bool(s["scene_buttons"]),
+                                     "Each scene button starts the scene assigned to it in Behavior ▸ Scene "
+                                     "Buttons. Shift + scene button = Blackout.")
         self.opt_quit = ToggleRow("Blackout when quitting", bool(s["blackout_on_quit"]))
         for t in (self.opt_restore, self.opt_buttons, self.opt_quit):
             sec.add(t)
@@ -176,6 +178,20 @@ class Inspector(QWidget):
         # ---------------- Behavior ----------------
         page, bl = _page()
         self.stack.addWidget(page)
+        sec = self._section("Scene Buttons")
+        self._scene_rows: List[ChoiceRow] = []
+        for i in range(8):
+            row = ChoiceRow(f"Button {i + 1}", ["—"] + [c.name for c in effects], "—")
+            row.changed.connect(lambda name, k=i: self._scene_button_changed(k, name))
+            sec.add(row)
+            self._scene_rows.append(row)
+        hint = QLabel("The green buttons on the right of the APC, top = 1. Assigned scenes become favorites. "
+                      "You can also right-click a scene button on the on-screen APC, or a scene in the browser.")
+        hint.setObjectName("Hint")
+        hint.setWordWrap(True)
+        sec.add(hint)
+        bl.addWidget(sec)
+
         sec = self._section("Keyboard Shortcuts")
         self._shortcut_rows: Dict[str, ChoiceRow] = {}
         names = ["—"] + [c.name for c in effects]
@@ -487,6 +503,15 @@ class Inspector(QWidget):
         names = {c.id: c.name for c in self._effects}
         for key, row in self._shortcut_rows.items():
             row.set_value(names.get(shortcuts.get(key, ""), "—"))
+
+    def set_scene_slots(self, slots: List[str]) -> None:
+        names = {c.id: c.name for c in self._effects}
+        for row, eid in zip(self._scene_rows, slots):
+            row.set_value(names.get(eid, "—"))
+
+    def _scene_button_changed(self, index: int, name: str) -> None:
+        eid = next((c.id for c in self._effects if c.name == name), "")
+        self.scene_button_assigned.emit(index, eid)
 
     def _shortcut_changed(self, key: str, name: str) -> None:
         eid = next((c.id for c in self._effects if c.name == name), "")

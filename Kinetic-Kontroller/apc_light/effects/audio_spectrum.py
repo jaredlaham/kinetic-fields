@@ -88,7 +88,7 @@ class AudioSpectrum(Effect):
         dt = min(ctx.real_dt, 0.1)
         p = ctx.params
         bands = None
-        if p["source"] == "Microphone":
+        if p["source"] == "Microphone" and not ctx.preview:
             mic = self._mic()
             live = mic.available and ctx.now - mic.last_audio < SILENCE_FALLBACK
             if live:

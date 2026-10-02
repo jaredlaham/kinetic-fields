@@ -63,6 +63,7 @@ class BrowserList(QWidget):
         self._thumb = thumbnail
         self._favorites: List[str] = []
         self._keys: Dict[str, str] = {}
+        self._slots: Dict[str, int] = {}      # effect id -> scene button 0..7
         self._selected: Optional[str] = None
         self._active: Optional[str] = None
         self._collapsed: set = set()
@@ -91,6 +92,13 @@ class BrowserList(QWidget):
 
     def visible_effects(self) -> List[str]:
         return [e.key for e in self._entries if e.kind == "row"]
+
+    def set_scene_slots(self, slots) -> None:
+        self._slots = {eid: i for i, eid in enumerate(slots) if eid}
+        self.update()
+
+    def scene_button_of(self, eid: str) -> Optional[int]:
+        return self._slots.get(eid)
 
     def is_favorite(self, eid: str) -> bool:
         return eid in self._favorites
@@ -185,13 +193,24 @@ class BrowserList(QWidget):
         # name
         star_x = r.right() - STAR_W - 4
         badge_w = 20
-        name_right = star_x - badge_w - 8
+        key = self._keys.get(eid)
+        slot = self._slots.get(eid)
+        name_right = star_x - 8 - (badge_w + 4) * ((1 if key else 0) + (1 if slot is not None else 0))
         p.setFont(_font(F.ROW))
         p.setPen(text)
         p.drawText(QRectF(GUTTER + 4 + t + 10, r.top(), name_right - (GUTTER + t + 14), r.height()),
                    Qt.AlignVCenter | Qt.AlignLeft, e.title)
+        # scene-button badge (green, like the APC's scene LEDs)
+        if slot is not None:
+            bx = star_x - badge_w - 4 - ((badge_w + 4) if key else 0)
+            b = QRectF(bx, r.top() + (r.height() - 18) / 2, badge_w, 18)
+            p.setPen(QPen(QColor(60, 194, 97, 200), 1))
+            p.setBrush(QColor(60, 194, 97, 50))
+            p.drawRoundedRect(b.adjusted(0.5, 0.5, -0.5, -0.5), R.SMALL, R.SMALL)
+            p.setFont(_font(F.BADGE, QFont.Medium))
+            p.setPen(QColor("#8EF0A6"))
+            p.drawText(b, Qt.AlignCenter, str(slot + 1))
         # shortcut badge
-        key = self._keys.get(eid)
         if key:
             b = QRectF(star_x - badge_w - 4, r.top() + (r.height() - 18) / 2, badge_w, 18)
             p.setPen(QPen(QColor(255, 255, 255, 40 if not selected else 90), 1))
@@ -340,6 +359,7 @@ class BrowserPanel(QWidget):
     effect_clicked = Signal(str)
     favorites_changed = Signal(list)
     shortcut_assigned = Signal(str, str)
+    scene_button_assigned = Signal(int, str)   # button 0..7, effect id ("" = clear)
     add_effect = Signal()
     save_pattern = Signal()
     load_pattern = Signal(str)
@@ -356,6 +376,7 @@ class BrowserPanel(QWidget):
         self._by_id = {c.id: c for c in effects}
         self._favorites: List[str] = []
         self._shortcuts: Dict[str, str] = {}
+        self._slots: List[str] = [""] * 8
         lay = QVBoxLayout(self)
         lay.setContentsMargins(0, 0, 0, 0)
         lay.setSpacing(0)
@@ -429,6 +450,10 @@ class BrowserPanel(QWidget):
         self._shortcuts = dict(shortcuts)
         self.list.set_state(self._favorites, self._shortcuts, collapsed)
 
+    def set_scene_slots(self, slots) -> None:
+        self._slots = list(slots)
+        self.list.set_scene_slots(self._slots)
+
     def set_selection(self, selected, active) -> None:
         self.list.set_selection(selected, active)
         if selected:
@@ -490,6 +515,20 @@ class BrowserPanel(QWidget):
             menu.addAction("Move Up in Favorites").triggered.connect(lambda: self._move_favorite(effect_id, -1))
             menu.addAction("Move Down in Favorites").triggered.connect(lambda: self._move_favorite(effect_id, 1))
         menu.addSeparator()
+        sub = menu.addMenu("APC Scene Button")
+        for i in range(8):
+            owner = self._slots[i] if i < len(self._slots) else ""
+            label = f"Button {i + 1}" + ("  (top)" if i == 0 else "")
+            if owner and owner != effect_id and owner in self._by_id:
+                label += f"   (now {self._by_id[owner].name})"
+            a = sub.addAction(label)
+            a.setCheckable(True)
+            a.setChecked(owner == effect_id)
+            a.triggered.connect(lambda _=False, k=i: self.scene_button_assigned.emit(k, effect_id))
+        if effect_id in self._slots:
+            sub.addSeparator()
+            sub.addAction("None").triggered.connect(
+                lambda: self.scene_button_assigned.emit(self._slots.index(effect_id), ""))
         sub = menu.addMenu("Keyboard Shortcut")
         current = next((k for k, v in self._shortcuts.items() if v == effect_id), None)
         for key in "123456789":

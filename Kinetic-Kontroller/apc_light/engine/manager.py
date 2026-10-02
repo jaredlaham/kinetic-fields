@@ -343,7 +343,7 @@ class Engine:
         try:
             effect = cls()
             ctx = RenderContext(t=0.0, params=self.params_for(effect_id), rng=random.Random(7),
-                                now=time.monotonic(), interaction=InteractionState())
+                                now=time.monotonic(), interaction=InteractionState(), preview=True)
             effect.start(ctx)
             ctx.t, ctx.dt = t, t
             effect.update(ctx, frame)

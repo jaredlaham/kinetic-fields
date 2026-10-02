@@ -70,6 +70,8 @@ class ApcView(QWidget):
     pad_pressed = Signal(int, int, str)  # x, y, "left"/"right"
     pad_released = Signal(int, int)
     fader_moved = Signal(int, float)     # index 0..8, value 0..1 (on-screen drag)
+    scene_clicked = Signal(int)          # scene button 0..7 (top = 0), left click
+    scene_menu = Signal(int, object)     # scene button, global QPoint (right click: assign)
 
     def __init__(self, parent=None) -> None:
         super().__init__(parent)
@@ -78,6 +80,8 @@ class ApcView(QWidget):
         self.setMouseTracking(True)
         self._pads: List[Pad] = [OFF] * 64
         self._scene_states: List[int] = [0] * 8   # 0 off, 1 on, 2 blink
+        self._scene_names: List[str] = [""] * 8   # assigned scene per button (tooltips)
+        self._scene_hover: Optional[int] = None
         self._faders: List[float] = [0.5] * 9
         self._fader_drag: Optional[int] = None
         self._connected = False
@@ -107,6 +111,27 @@ class ApcView(QWidget):
 
     def set_scene_led(self, index: Optional[int]) -> None:
         self.set_scene_leds([1 if i == index else 0 for i in range(8)])
+
+    def set_scene_names(self, names) -> None:
+        self._scene_names = list(names)[:8] + [""] * max(0, 8 - len(names))
+        if self._scene_hover is not None:
+            self._update_scene_tooltip()
+
+    def _scene_hit(self, pos) -> Optional[int]:
+        _, grid, pitch = self._geometry()
+        for i in range(8):
+            if self._pad_rect(8, i, grid, pitch).contains(pos):
+                return i
+        return None
+
+    def _update_scene_tooltip(self) -> None:
+        i = self._scene_hover
+        if i is None:
+            self.setToolTip("")
+            return
+        name = self._scene_names[i] if i < len(self._scene_names) else ""
+        self.setToolTip(f"Scene button {i + 1}: {name or 'empty'}\n"
+                        "Click to start · Right-click to assign a scene")
 
     def set_scene_leds(self, states) -> None:
         states = list(states)[:8]
@@ -476,6 +501,13 @@ class ApcView(QWidget):
 
     # -- interaction ---------------------------------------------------------------------------
     def mousePressEvent(self, e) -> None:
+        sb = self._scene_hit(e.position())
+        if sb is not None:
+            if e.button() == Qt.RightButton:
+                self.scene_menu.emit(sb, e.globalPosition().toPoint())
+            elif e.button() == Qt.LeftButton:
+                self.scene_clicked.emit(sb)
+            return
         f = self._fader_hit(e.position())
         if f is not None:
             self._fader_drag = f
@@ -501,8 +533,14 @@ class ApcView(QWidget):
         if self._fader_drag is not None:
             self._drag_fader(e.position().y())
             return
+        sb = self._scene_hit(e.position())
+        if sb != self._scene_hover:
+            self._scene_hover = sb
+            self._update_scene_tooltip()
         if self._fader_hit(e.position()) is not None:
             self.setCursor(Qt.SizeVerCursor)
+        elif sb is not None:
+            self.setCursor(Qt.PointingHandCursor)
         else:
             self.setCursor(Qt.PointingHandCursor if self._paint_mode else Qt.ArrowCursor)
         hit = self._hit(e.position())
@@ -528,6 +566,7 @@ class ApcView(QWidget):
 
     def leaveEvent(self, _e) -> None:
         self._hover = None
+        self._scene_hover = None
         self.update()
 
 

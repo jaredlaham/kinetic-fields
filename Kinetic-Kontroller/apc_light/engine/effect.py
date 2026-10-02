@@ -117,6 +117,7 @@ class RenderContext:
     now: float = 0.0
     real_dt: float = 0.0
     interaction: Any = None  # engine.interaction.InteractionState
+    preview: bool = False    # browser thumbnail render: no sound, MIDI out or microphone
 
     def step(self, interval: float) -> int:
         """Integer step counter: increments every ``interval`` effect-seconds."""

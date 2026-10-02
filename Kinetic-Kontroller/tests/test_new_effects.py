@@ -266,3 +266,19 @@ def test_fader_events_reach_the_effect(rig):
         assert engine.params_for("fireworks")["size"] == 40
     finally:
         engine.shutdown()
+
+
+def test_previews_never_open_audio_or_midi(rig, monkeypatch):
+    """Browser thumbnails render every scene at launch: they must not open the
+    microphone (macOS would block on the permission prompt), play sound or send MIDI."""
+    _, _, _, engine = rig
+    opened = []
+    monkeypatch.setattr(audio, "analyzer", lambda: opened.append("mic"))
+    monkeypatch.setattr(audio, "synth", lambda: opened.append("synth"))
+    monkeypatch.setattr(audio, "virtual_midi", lambda: opened.append("midi"))
+    monkeypatch.delenv("KK_NO_MIC", raising=False)
+    engine.set_params("light_sequencer", {"sound": True, "midi_out": True})
+    engine.set_params("harp_strings", {"sound": True})
+    for eid in NEW:
+        engine.render_preview(eid, t=0.4)
+    assert opened == []

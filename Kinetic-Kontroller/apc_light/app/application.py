@@ -192,16 +192,42 @@ class Controller(QObject):
         self.window.library.set_state(self.settings["favorites"], self.shortcuts(), self.engine.active_id,
                                       ui.get("collapsed", []))
         self.window.inspector.set_shortcuts(self.shortcuts())
+        self.window.inspector.set_scene_slots(self.scene_slots())
+        self.window.library.set_scene_slots(self.scene_slots())
 
     def favorite_ids(self) -> List[str]:
         return [f for f in self.settings["favorites"] if f in self.registry]
 
+    def scene_slots(self) -> List[str]:
+        """Scene for each APC scene button 1-8 (top = 1); "" = unassigned."""
+        return [v if v in self.registry else "" for v in self.settings["scene_slots"]]
+
+    def assign_scene_button(self, index: int, effect_id: str) -> None:
+        """Put a scene on scene button ``index`` (0-7), or clear it with "".
+        A scene sits on one button at a time, and assigning makes it a favourite."""
+        if not 0 <= index < 8:
+            return
+        slots = self.scene_slots()
+        if effect_id and effect_id not in self.registry:
+            return
+        if effect_id:
+            slots = ["" if v == effect_id else v for v in slots]
+        slots[index] = effect_id
+        self.settings["scene_slots"] = slots
+        favs = list(self.settings["favorites"])
+        if effect_id and effect_id not in favs:
+            favs.append(effect_id)
+        name = self.registry.get(effect_id).name if effect_id else "(empty)"
+        log.info("Scene button %d -> %s", index + 1, name)
+        self.set_favorites(favs)          # saves, refreshes LEDs, browser and inspector
+
     def _update_scene_led(self) -> None:
         active = self.engine.active_id
-        favs = self.favorite_ids()[:8]
-        idx = favs.index(active) if (active in favs and self.settings["scene_buttons"]) else None
+        slots = self.scene_slots()
+        idx = slots.index(active) if (active and active in slots and self.settings["scene_buttons"]) else None
         self.engine.set_scene_led(idx)
         self.window.view.set_scene_led(idx)
+        self.window.view.set_scene_names([self.registry.get(v).name if v else "" for v in slots])
 
     # -- actions (GUI thread) --------------------------------------------------
     def start_effect(self, effect_id: str) -> None:
@@ -253,6 +279,10 @@ class Controller(QObject):
             favs.remove(effect_id)
         else:
             favs.append(effect_id)
+            slots = self.scene_slots()
+            if effect_id not in slots and "" in slots:     # new favourites fill a free scene button
+                slots[slots.index("")] = effect_id
+                self.settings["scene_slots"] = slots
         self.set_favorites(favs)
 
     # -- patterns library / notes / UI state ------------------------------------
@@ -457,6 +487,8 @@ class Controller(QObject):
 
     def set_favorites(self, favorites: List[str]) -> None:
         self.settings["favorites"] = favorites
+        # a scene that is no longer a favourite leaves its scene button
+        self.settings["scene_slots"] = [v if v in favorites else "" for v in self.scene_slots()]
         self.save_soon()
         self._update_scene_led()
         self.library_state()
@@ -480,6 +512,12 @@ class Controller(QObject):
         self.save_soon()
         self.library_state()
         log.info("Shortcut %s -> %s", key or "(none)", effect_id)
+
+    def trigger_scene_button(self, index: int) -> None:
+        """APC scene button or its on-screen twin: start the scene assigned to it."""
+        slots = self.scene_slots()
+        if 0 <= index < 8 and slots[index]:
+            self.start_effect(slots[index])
 
     def handle_key(self, text: str) -> bool:
         if text == "0":
@@ -544,9 +582,7 @@ class Controller(QObject):
         if self._shift:
             self.blackout()
         elif self.settings["scene_buttons"]:
-            favs = self.favorite_ids()
-            if ev.index < len(favs):
-                self.start_effect(favs[ev.index])
+            self.trigger_scene_button(ev.index)
 
     # -- engine signals (GUI thread) --------------------------------------------
     def _on_frame(self, seq: int, pads: List[Pad], scene=None) -> None:

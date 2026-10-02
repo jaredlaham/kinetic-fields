@@ -9,9 +9,17 @@ LEDs at a time, and **BLACKOUT** (or the `0` key) turns everything off.
 - Global **Speed** and **Brightness** (the APC's seven official brightness levels)
 - Per-scene settings (colors via the macOS color panel, text, modes), applied live
 - Auto-detects the `APC mini mk2 Control` port and reconnects after unplug/replug
-- APC hardware: the 8 green **scene buttons** (right column, top = 1) start favorites 1–8, and
-  **Shift + scene** blacks out. Out of the box, number key N, favorite N and scene button N are the
-  same scene, with **Kinetic Sweep in #1**
+- APC hardware: assign any scene to each of the 8 green **scene buttons** (right column, top = 1),
+  and **Shift + scene** blacks out. Out of the box the buttons hold your first favorites, with
+  **Kinetic Sweep on button 1** (and key 1). To assign a scene:
+  - **Inspector ▸ Behavior ▸ Scene Buttons**: pick a scene for each button.
+  - **Right-click a scene button** on the on-screen APC: *Assign "current scene"*, choose from
+    Favorites or All Scenes, or *Clear Button*. Left-click it to start that scene.
+  - **Right-click a scene in the browser ▸ APC Scene Button ▸ 1–8.**
+
+  An assigned scene becomes a favorite, and its button number shows as a green badge in the browser.
+  A scene sits on one button at a time. New favorites fill the first free button, and removing a
+  favorite frees its button
 - Live MIDI monitor and log in the app (Inspector ▸ MIDI), so you never need Terminal
 - LEDs stay off at launch unless you turn on "Start last scene at launch"
 

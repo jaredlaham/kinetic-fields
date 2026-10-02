@@ -1,4 +1,6 @@
 import json
+import os
+from pathlib import Path
 
 from apc_light.settings.store import Settings
 
@@ -52,3 +54,13 @@ def test_kinetic_sweep_is_key_1_and_scene_button_1(qtbot=None):
     assert keys["1"] == "kinetic_sweep" == DEFAULTS["favorites"][0]
     # key N == favorite N == APC scene button N
     assert [keys[str(i + 1)] for i in range(6)] == DEFAULTS["favorites"][:6]
+    assert Settings(Path(os.environ["APC_LIGHT_HOME"]) / "fresh.json")["scene_slots"][:6] == DEFAULTS["favorites"][:6]
+
+
+def test_v2_settings_seed_scene_buttons_from_favorites(tmp_path):
+    path = tmp_path / "s.json"
+    path.write_text(json.dumps({"version": 2, "favorites": ["kinetic_sweep", "heart", "pong"]}))
+    s = Settings(path)
+    assert s["scene_slots"] == ["kinetic_sweep", "heart", "pong", "", "", "", "", ""]
+    path.write_text(json.dumps({"version": 3, "favorites": ["heart"], "scene_slots": ["", "heart", 5, "", "", "", "", ""]}))
+    assert Settings(path)["scene_slots"] == ["", "heart", "", "", "", "", "", ""]

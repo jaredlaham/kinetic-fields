@@ -46,7 +46,7 @@ class HarpStrings(Effect):
     def pluck(self, ctx, row, x, amp=1.0):
         self.plucks.append([row, x + 1.0, ctx.now, amp])
         del self.plucks[:-24]
-        if ctx.params["sound"]:
+        if ctx.params["sound"] and not ctx.preview:
             self._sound_used = True
             dur = 0.4 + ctx.params["sustain"] * 0.25
             audio.synth().play(audio.midi_to_hz(lane_note(row, ctx.params["scale"], 60)), dur, "triangle", 0.1 * amp)

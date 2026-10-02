@@ -152,6 +152,16 @@ class MainWindow(QMainWindow):
         fav = eid in self.ctl.settings["favorites"]
         menu.addAction("Remove from Favorites" if fav else "Add to Favorites").triggered.connect(
             lambda: self.ctl.toggle_favorite(eid))
+        sub = menu.addMenu("APC Scene Button")
+        slots = self.ctl.scene_slots()
+        for i in range(8):
+            a = sub.addAction(f"Button {i + 1}" + ("  (top)" if i == 0 else ""))
+            a.setCheckable(True)
+            a.setChecked(slots[i] == eid)
+            a.triggered.connect(lambda _=False, k=i: self.ctl.assign_scene_button(k, eid))
+        if eid in slots:
+            sub.addSeparator()
+            sub.addAction("None").triggered.connect(lambda: self.ctl.assign_scene_button(slots.index(eid), ""))
         sub = menu.addMenu("Keyboard Shortcut")
         for key in "123456789":
             sub.addAction(key).triggered.connect(lambda _=False, k=key: self.ctl.assign_shortcut(k, eid))
@@ -161,6 +171,36 @@ class MainWindow(QMainWindow):
             menu.addAction("Reset Settings to Defaults").triggered.connect(lambda: self.ctl.pattern_action(eid, "reset"))
         menu.addSeparator()
         menu.addAction("Add Effect…").triggered.connect(self.ctl.add_effect)
+
+    def scene_button_menu(self, index: int) -> QMenu:
+        """Right-click menu for an on-screen scene button: pick its scene."""
+        c = self.ctl
+        menu = QMenu(self)
+        slots = c.scene_slots()
+        current = slots[index]
+        title = menu.addAction(f"Scene Button {index + 1}: {c.registry.get(current).name if current else 'empty'}")
+        title.setEnabled(False)
+        menu.addSeparator()
+        shown = c.registry.get(c.shown_id) if c.shown_id else None
+        if shown is not None and shown.id != current:
+            menu.addAction(f"Assign “{shown.name}”").triggered.connect(
+                lambda: c.assign_scene_button(index, shown.id))
+        favs = [f for f in c.favorite_ids() if f != current]
+        if favs:
+            sub = menu.addMenu("Favorites")
+            for eid in favs:
+                sub.addAction(c.registry.get(eid).name).triggered.connect(
+                    lambda _=False, e=eid: c.assign_scene_button(index, e))
+        sub = menu.addMenu("All Scenes")
+        for cls in c.registry.all():
+            a = sub.addAction(cls.name)
+            a.setCheckable(True)
+            a.setChecked(cls.id == current)
+            a.triggered.connect(lambda _=False, e=cls.id: c.assign_scene_button(index, e))
+        if current:
+            menu.addSeparator()
+            menu.addAction("Clear Button").triggered.connect(lambda: c.assign_scene_button(index, ""))
+        return menu
 
     # ------------------------------------------------------------------ wiring
     def _wire(self) -> None:
@@ -191,6 +231,10 @@ class MainWindow(QMainWindow):
         self.view.pad_pressed.connect(lambda x, y, b: c.screen_pad(x, y, True, b))
         self.view.pad_released.connect(lambda x, y: c.screen_pad(x, y, False))
         self.view.fader_moved.connect(c.screen_fader)
+        self.view.scene_clicked.connect(c.trigger_scene_button)
+        self.view.scene_menu.connect(lambda i, pos: self.scene_button_menu(i).exec(pos))
+        lib.scene_button_assigned.connect(c.assign_scene_button)
+        ins.scene_button_assigned.connect(c.assign_scene_button)
         ins.param_changed.connect(c.set_param)
         ins.action.connect(c.pattern_action)
         ins.speed_changed.connect(c.set_speed)

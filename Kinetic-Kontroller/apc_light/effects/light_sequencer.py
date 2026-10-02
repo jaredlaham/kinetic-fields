@@ -95,10 +95,10 @@ class LightSequencer(Effect):
             if p["steps"][y * 8 + x]:
                 self.hits[y * 8 + x] = 1.0
                 note = lane_note(y, p["scale"])
-                if p["sound"]:
+                if p["sound"] and not ctx.preview:
                     self._sound_used = True
                     audio.synth().play(audio.midi_to_hz(note), 0.35, "triangle", 0.12)
-                if p["midi_out"]:
+                if p["midi_out"] and not ctx.preview:
                     self._midi_used = True
                     audio.virtual_midi().note(note, 100, 0.12)
 

@@ -76,8 +76,9 @@ class LedOutput:
         self.brightness = 100
         self.set_brightness(brightness)
         self._sent: List[WireState] = [None] * PAD_COUNT
-        self._scene_led: Optional[int] = None
-        self._scene_led_sent: Optional[int] = -1  # -1 = unknown
+        # scene-button LED states: 0 off, 1 on, 2 blink (None in _sent = unknown)
+        self._scene: List[int] = [0] * 8
+        self._scene_sent: List[Optional[int]] = [None] * 8
 
     # -- configuration ----------------------------------------------------
     def set_brightness(self, percent: int) -> None:
@@ -92,7 +93,7 @@ class LedOutput:
     def invalidate(self) -> None:
         """Forget what the hardware shows; the next frame is sent in full."""
         self._sent = [None] * PAD_COUNT
-        self._scene_led_sent = -1
+        self._scene_sent = [None] * 8
 
     # -- mapping ----------------------------------------------------------
     def wire_state(self, pad: Pad) -> Tuple:
@@ -168,23 +169,29 @@ class LedOutput:
         self._sync_scene_led()
 
     def set_scene_led(self, index: Optional[int]) -> None:
-        self._scene_led = index if index is not None and 0 <= index < 8 else None
+        """Light exactly one scene button (the favourites indicator)."""
+        self.set_scene_leds([BUTTON_LED_ON if i == index else BUTTON_LED_OFF for i in range(8)])
+
+    def set_scene_leds(self, states) -> None:
+        """All 8 scene-button LEDs: 0 off, 1 on, 2 blink (games use them for scores)."""
+        self._scene = [int(s) if s in (0, 1, 2) else (1 if s else 0) for s in list(states)[:8]] + [0] * (8 - len(states))
         self._sync_scene_led()
 
+    @property
+    def scene_states(self) -> List[int]:
+        return list(self._scene)
+
     def _sync_scene_led(self) -> None:
-        if not self.device.connected or self._scene_led_sent == self._scene_led:
+        if not self.device.connected:
             return
-        msgs = []
-        for i in range(8):
-            if self._scene_led_sent == -1 or i in (self._scene_led, self._scene_led_sent):
-                msgs.append(note_on(SCENE_BUTTON_FIRST + i, BUTTON_LED_ON if i == self._scene_led else BUTTON_LED_OFF))
-        for m in msgs:
-            self.device.send(m)
-        self._scene_led_sent = self._scene_led
+        for i, state in enumerate(self._scene):
+            if self._scene_sent[i] != state:
+                if self.device.send(note_on(SCENE_BUTTON_FIRST + i, state)):
+                    self._scene_sent[i] = state
 
     def blackout(self) -> None:
         """Every pad and button LED off, regardless of cached state."""
-        self._scene_led = None
+        self._scene = [0] * 8
         if not self.device.connected:
             self.invalidate()
             return
@@ -194,5 +201,5 @@ class LedOutput:
             self.device.send_many(rgb_sysex([(0, PAD_COUNT - 1, (0, 0, 0))]))
         self.device.send_many(all_buttons_off())
         self._sent = [_OFF_STATE] * PAD_COUNT
-        self._scene_led_sent = None
+        self._scene_sent = [0] * 8
         log.info("Blackout sent")

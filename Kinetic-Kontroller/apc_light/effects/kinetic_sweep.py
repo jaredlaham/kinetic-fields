@@ -43,7 +43,7 @@ def traverse_seconds(slider: float) -> float:
 
 class KineticSweep(Effect):
     name = "Kinetic Sweep"
-    category = "Animated"
+    category = "Interactive"
     description = "Interactive sweep: press pads to ripple, pulse and bloom light"
     shortcut = "1"
     order = 5
@@ -108,6 +108,8 @@ class KineticSweep(Effect):
 
     # ------------------------------------------------------------------ input
     def on_input(self, ctx, event):
+        if not hasattr(event, "pressed"):          # faders: master fader -> param
+            return super().on_input(ctx, event)
         p = ctx.params
         key = (event.x, event.y)
         if event.pressed:

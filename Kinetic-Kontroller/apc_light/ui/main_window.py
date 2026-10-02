@@ -190,6 +190,7 @@ class MainWindow(QMainWindow):
         lib.ui_changed.connect(c.set_ui_state)
         self.view.pad_pressed.connect(lambda x, y, b: c.screen_pad(x, y, True, b))
         self.view.pad_released.connect(lambda x, y: c.screen_pad(x, y, False))
+        self.view.fader_moved.connect(c.screen_fader)
         ins.param_changed.connect(c.set_param)
         ins.action.connect(c.pattern_action)
         ins.speed_changed.connect(c.set_speed)

@@ -7,6 +7,7 @@ import pytest
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
+os.environ.setdefault("KK_NO_MIC", "1")
 
 from apc_light.engine.manager import Engine  # noqa: E402
 from apc_light.engine.registry import EffectRegistry  # noqa: E402

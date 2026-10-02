@@ -14,7 +14,7 @@ from apc_light import APP_NAME, BUNDLE_ID, __version__  # noqa: E402
 ICON = os.environ.get("APC_ICON") or None
 TARGET_ARCH = os.environ.get("TARGET_ARCH") or None  # arm64 / x86_64 / universal2; default = this Mac
 
-hiddenimports = collect_submodules("apc_light.effects") + ["rtmidi", "rtmidi._rtmidi"]
+hiddenimports = collect_submodules("apc_light.effects") + ["rtmidi", "rtmidi._rtmidi", "numpy", "sounddevice", "_sounddevice"]
 
 a = Analysis(
     [os.path.join(ROOT, "main.py")],
@@ -65,6 +65,7 @@ app = BUNDLE(
         "LSMinimumSystemVersion": "11.0",
         "NSHighResolutionCapable": True,
         "NSRequiresAquaSystemAppearance": False,
+        "NSMicrophoneUsageDescription": "Kinetic Kontroller listens to audio input only for the Audio Spectrum effect, to light the pads to the music. Nothing is recorded or sent anywhere.",
         "NSHumanReadableCopyright": "© Jared Laham / Kinetic Fields",
     },
 )

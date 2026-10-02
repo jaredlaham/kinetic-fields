@@ -17,17 +17,21 @@ from PySide6.QtCore import QLockFile, QObject, QTimer, QUrl, Signal
 from PySide6.QtGui import QColor, QDesktopServices, QIcon, QPalette
 from PySide6.QtWidgets import QApplication, QMessageBox
 
-from .. import APP_NAME, BUNDLE_ID, __version__
+from .. import APP_NAME, BUNDLE_ID, __version__, audio
 from ..engine.frame import Pad
 from ..engine.manager import Engine
 from ..engine.registry import EffectRegistry
 from ..midi.device import MidiDevice
-from ..midi.input import ButtonEvent, MidiInputHub, PadEvent
+from ..midi.input import ButtonEvent, FaderEvent, MidiInputHub, PadEvent
 from ..midi.output import LedOutput
 from ..settings import paths
 from ..settings.store import Settings
 
 log = logging.getLogger("apc.app")
+
+
+def clamp01(v: float) -> float:
+    return 0.0 if v < 0 else 1.0 if v > 1 else float(v)
 ASSETS = Path(__file__).resolve().parents[1] / "assets"
 
 
@@ -60,7 +64,7 @@ def setup_logging(debug: bool):
 class _Bridge(QObject):
     """Marshals engine/MIDI-thread callbacks onto the GUI thread."""
 
-    frame = Signal(object, object)
+    frame = Signal(object, object, object)
     effect_changed = Signal(object)
     params_changed = Signal(str, object)
     error = Signal(str)
@@ -405,7 +409,7 @@ class Controller(QObject):
                 self.engine.set_params(effect_id, cls.presets[name])
         elif action == "reset":
             log.info("%s: reset to defaults", cls.name)
-            keep = {k: v for k, v in self.engine.params_for(effect_id).items() if k == "pattern"}
+            keep = {k: v for k, v in self.engine.params_for(effect_id).items() if k in ("pattern", "steps")}
             self.engine.set_params(effect_id, {**cls.default_params(), **keep})
         elif action in ("clear", "fill"):
             params = self.engine.params_for(effect_id)
@@ -415,6 +419,10 @@ class Controller(QObject):
             return
         self._store_params(effect_id)
         self.window.refresh_params()
+
+    def screen_fader(self, index: int, value: float) -> None:
+        """An on-screen fader was dragged (0..1): behaves like the hardware fader."""
+        self.engine.post_input(FaderEvent(index, int(round(clamp01(value) * 127))))
 
     def screen_pad(self, x: int, y: int, pressed: bool, button: str = "left") -> None:
         """A pad clicked on the on-screen APC: treated like a hardware press.
@@ -523,6 +531,9 @@ class Controller(QObject):
 
     def _on_input(self, ev) -> None:
         """Non-pad input (GUI thread). Pads go straight to the engine."""
+        if isinstance(ev, FaderEvent):
+            self.window.view.set_fader(ev.index, ev.value / 127.0)
+            return
         if not isinstance(ev, ButtonEvent):
             return
         if ev.kind == "shift":
@@ -538,11 +549,13 @@ class Controller(QObject):
                 self.start_effect(favs[ev.index])
 
     # -- engine signals (GUI thread) --------------------------------------------
-    def _on_frame(self, seq: int, pads: List[Pad]) -> None:
+    def _on_frame(self, seq: int, pads: List[Pad], scene=None) -> None:
         if seq <= self._frame_seq:
             return  # stale frame from before a switch
         self._frame_seq = seq
         self.window.view.set_pads(pads)
+        if scene is not None:
+            self.window.view.set_scene_leds(scene)
 
     def _on_effect_changed(self, effect_id: Optional[str]) -> None:
         if effect_id:
@@ -580,6 +593,7 @@ class Controller(QObject):
         self.engine.shutdown(blackout=bool(self.settings["blackout_on_quit"]))
         self.device.close()          # closes MIDI in + out; no more callbacks
         self.midi_input.clear()
+        audio.shutdown_all()         # mic / synth / virtual MIDI, if any effect opened them
         log.info("Shutdown complete")
 
 
@@ -723,7 +737,9 @@ def parse_args(argv: List[str]) -> argparse.Namespace:
 def main(argv: Optional[List[str]] = None) -> int:
     args = parse_args(sys.argv[1:] if argv is None else argv)
     if args.self_test:
-        # Separate settings so a test run never touches the user's settings.
+        # Separate settings so a test run never touches the user's settings,
+        # and never trigger the microphone permission prompt.
+        os.environ.setdefault("KK_NO_MIC", "1")
         os.environ.setdefault("APC_LIGHT_HOME", str(paths.support_dir() / "self-test"))
     QApplication.setApplicationName(APP_NAME)
     QApplication.setOrganizationName("Jared Laham")

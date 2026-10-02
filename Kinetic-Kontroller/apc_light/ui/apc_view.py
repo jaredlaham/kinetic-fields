@@ -69,6 +69,7 @@ def pad_color(pad: Pad, now: float) -> Optional[QColor]:
 class ApcView(QWidget):
     pad_pressed = Signal(int, int, str)  # x, y, "left"/"right"
     pad_released = Signal(int, int)
+    fader_moved = Signal(int, float)     # index 0..8, value 0..1 (on-screen drag)
 
     def __init__(self, parent=None) -> None:
         super().__init__(parent)
@@ -76,7 +77,9 @@ class ApcView(QWidget):
         self.setMinimumSize(360, 420)
         self.setMouseTracking(True)
         self._pads: List[Pad] = [OFF] * 64
-        self._scene_led: Optional[int] = None
+        self._scene_states: List[int] = [0] * 8   # 0 off, 1 on, 2 blink
+        self._faders: List[float] = [0.5] * 9
+        self._fader_drag: Optional[int] = None
         self._connected = False
         self._paint_mode = False
         self._hover: Optional[tuple] = None
@@ -95,7 +98,7 @@ class ApcView(QWidget):
     # -- data ----------------------------------------------------------------------
     def set_pads(self, pads: List[Pad]) -> None:
         self._pads = pads
-        needs_anim = any(p.mode != "solid" and not p.is_off for p in pads)
+        needs_anim = any(p.mode != "solid" and not p.is_off for p in pads) or 2 in self._scene_states
         if needs_anim and not self._anim.isActive():
             self._anim.start()
         elif not needs_anim and self._anim.isActive():
@@ -103,8 +106,41 @@ class ApcView(QWidget):
         self.update()
 
     def set_scene_led(self, index: Optional[int]) -> None:
-        self._scene_led = index
-        self.update()
+        self.set_scene_leds([1 if i == index else 0 for i in range(8)])
+
+    def set_scene_leds(self, states) -> None:
+        states = list(states)[:8]
+        if states != self._scene_states:
+            self._scene_states = states
+            if 2 in states and not self._anim.isActive():
+                self._anim.start()
+            self.update()
+
+    def set_fader(self, index: int, value: float) -> None:
+        if 0 <= index < 9 and self._fader_drag != index:
+            self._faders[index] = max(0.0, min(1.0, value))
+            self.update()
+
+    def _fader_geometry(self, i: int, grid: QPointF, pitch: float):
+        """(centre x, top y, height) of fader ``i``."""
+        ty = grid.y() + _GRID_H * pitch + pitch * 0.34
+        fy = ty + pitch * _TRACK * 0.72
+        fh = pitch * (_FADERS - 0.35)
+        return grid.x() + i * pitch + _PAD_W * pitch / 2, fy, fh
+
+    def _fader_hit(self, pos) -> Optional[int]:
+        _, grid, pitch = self._geometry()
+        for i in range(9):
+            cx, fy, fh = self._fader_geometry(i, grid, pitch)
+            if abs(pos.x() - cx) <= pitch * 0.4 and fy - pitch * 0.2 <= pos.y() <= fy + fh + pitch * 0.2:
+                return i
+        return None
+
+    def _fader_value_at(self, i: int, y: float) -> float:
+        _, grid, pitch = self._geometry()
+        _, fy, fh = self._fader_geometry(i, grid, pitch)
+        top, travel = fy + fh * 0.08, fh * 0.84
+        return max(0.0, min(1.0, 1.0 - (y - top) / travel))
 
     def set_connected(self, connected: bool) -> None:
         self._connected = connected
@@ -300,11 +336,9 @@ class ApcView(QWidget):
             p.setPen(QPen(QColor(255, 255, 255, 55), 1))
             p.drawLine(QPointF(r.left() + 3, r.top() + 1.5), QPointF(r.right() - 3, r.top() + 1.5))
 
-        # faders
-        fy = ty + pitch * _TRACK * 0.72
-        fh = pitch * (_FADERS - 0.35)
+        # fader wells (caps are drawn live in paintEvent)
         for i in range(9):
-            cx = grid.x() + i * pitch + _PAD_W * pitch / 2
+            cx, fy, fh = self._fader_geometry(i, grid, pitch)
             well_r = QRectF(cx - pitch * 0.34, fy, pitch * 0.68, fh)
             p.setBrush(QColor("#161719"))
             p.setPen(QPen(QColor(0, 0, 0, 180), 1))
@@ -316,17 +350,6 @@ class ApcView(QWidget):
                 p.drawLine(QPointF(cx + pitch * 0.14, yy), QPointF(cx + pitch * 0.26, yy))
             p.setPen(QPen(QColor("#050505"), max(2.0, pitch * 0.07), Qt.SolidLine, Qt.RoundCap))
             p.drawLine(QPointF(cx, fy + fh * 0.08), QPointF(cx, fy + fh * 0.92))
-            cap = QRectF(cx - pitch * 0.3, fy + fh * 0.5 - pitch * 0.17, pitch * 0.6, pitch * 0.34)
-            cg = QLinearGradient(cap.topLeft(), cap.bottomLeft())
-            cg.setColorAt(0.0, QColor("#F1F2F4"))
-            cg.setColorAt(0.45, QColor("#B9BCC1"))
-            cg.setColorAt(0.55, QColor("#8F9398"))
-            cg.setColorAt(1.0, QColor("#C4C7CB"))
-            p.setBrush(cg)
-            p.setPen(QPen(QColor(0, 0, 0, 180), 1))
-            p.drawRoundedRect(cap, pitch * 0.05, pitch * 0.05)
-            p.setPen(QPen(QColor(40, 40, 40, 200), 1))
-            p.drawLine(QPointF(cap.left() + 2, cap.center().y()), QPointF(cap.right() - 2, cap.center().y()))
         p.end()
         self._body, self._body_key = pm, key
         return pm
@@ -406,12 +429,30 @@ class ApcView(QWidget):
                 p.setBrush(Qt.NoBrush)
                 p.drawRoundedRect(rect.adjusted(-2, -2, 2, 2), radius + 1, radius + 1)
 
-        # scene launch buttons (grey caps, green LED when lit)
+        # fader caps at their live positions
+        for i in range(9):
+            cx, fy, fh = self._fader_geometry(i, grid, pitch)
+            cy = fy + fh * 0.08 + fh * 0.84 * (1.0 - self._faders[i])
+            cap = QRectF(cx - pitch * 0.3, cy - pitch * 0.17, pitch * 0.6, pitch * 0.34)
+            cg = QLinearGradient(cap.topLeft(), cap.bottomLeft())
+            cg.setColorAt(0.0, QColor("#F1F2F4"))
+            cg.setColorAt(0.45, QColor("#B9BCC1"))
+            cg.setColorAt(0.55, QColor("#8F9398"))
+            cg.setColorAt(1.0, QColor("#C4C7CB"))
+            p.setBrush(cg)
+            p.setPen(QPen(QColor(0, 0, 0, 180), 1))
+            p.drawRoundedRect(cap, pitch * 0.05, pitch * 0.05)
+            p.setPen(QPen(QColor(40, 40, 40, 200), 1))
+            p.drawLine(QPointF(cap.left() + 2, cap.center().y()), QPointF(cap.right() - 2, cap.center().y()))
+
+        # scene launch buttons (grey caps, green LED when lit / blinking)
+        blink_on = (now * 2.0) % 1.0 < 0.5
         for i in range(8):
             pr = self._pad_rect(8, i, grid, pitch)
             r = QRectF(pr.left() + pitch * 0.14, pr.top() + pitch * 0.08, pr.width() - pitch * 0.28,
                        pr.height() - pitch * 0.16)
-            on = self._scene_led == i
+            state = self._scene_states[i] if i < len(self._scene_states) else 0
+            on = state == 1 or (state == 2 and blink_on)
             g = QLinearGradient(r.topLeft(), r.bottomLeft())
             if on:
                 g.setColorAt(0, QColor("#8EF0A6"))
@@ -435,6 +476,11 @@ class ApcView(QWidget):
 
     # -- interaction ---------------------------------------------------------------------------
     def mousePressEvent(self, e) -> None:
+        f = self._fader_hit(e.position())
+        if f is not None:
+            self._fader_drag = f
+            self._drag_fader(e.position().y())
+            return
         if not self._paint_mode:
             return
         hit = self._hit(e.position())
@@ -443,7 +489,22 @@ class ApcView(QWidget):
             self._last_drag = hit
             self.pad_pressed.emit(hit[0], hit[1], self._drag_button)
 
+    def _drag_fader(self, y: float) -> None:
+        i = self._fader_drag
+        v = self._fader_value_at(i, y)
+        if abs(v - self._faders[i]) > 1e-3:
+            self._faders[i] = v
+            self.fader_moved.emit(i, v)
+            self.update()
+
     def mouseMoveEvent(self, e) -> None:
+        if self._fader_drag is not None:
+            self._drag_fader(e.position().y())
+            return
+        if self._fader_hit(e.position()) is not None:
+            self.setCursor(Qt.SizeVerCursor)
+        else:
+            self.setCursor(Qt.PointingHandCursor if self._paint_mode else Qt.ArrowCursor)
         hit = self._hit(e.position())
         if hit != self._hover:
             self._hover = hit
@@ -456,6 +517,7 @@ class ApcView(QWidget):
             self.pad_pressed.emit(hit[0], hit[1], self._drag_button)
 
     def mouseReleaseEvent(self, _e) -> None:
+        self._fader_drag = None
         self._release_drag()
 
     def _release_drag(self) -> None:

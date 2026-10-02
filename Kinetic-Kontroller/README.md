@@ -39,6 +39,31 @@ that pad:
 - **Color Wake.** Touches briefly tint the sweep around them, and the tint drifts away from the pad.
 - **Best look.** Use **LED OUTPUT → RGB** for the smoothest fades. Palette mode works too; see below.
 
+## Play, games and sound
+
+All eight of these respond to pads on the APC and to clicks on the on-screen APC. The **master
+fader** (fader 9) controls each one's main setting, shown below. You can drag the on-screen faders too.
+
+| Scene | What you do | Master fader |
+|---|---|---|
+| **Pong** (Games) | Fader 1 moves the left paddle and fader 8 the right one. A side whose fader hasn't moved for 10 s is played by the computer. Tap a pad to serve. The scene buttons show the score: top four for left, bottom four for right. First to 4 wins. | Ball speed |
+| **Light Sequencer** | An 8-step × 8-note sequencer. Tap pads to toggle steps; the scene buttons follow the playhead. **Sound** plays a soft synth. **MIDI Out** sends the notes on the virtual port *Kinetic Kontroller Out*, so Logic or Ableton can record them. Presets: Groove, Arp, Empty. | Tempo (60–180 BPM) |
+| **Fireworks** | Tap a pad: a rocket climbs to it and bursts. Harder hits make bigger shells. **Auto show** fills the gaps. | Shell size |
+| **Kaleidoscope Paint** | Each touch is mirrored 4 or 8 ways and fades slowly. Hold and drag to paint strokes. | Trail length |
+| **Audio Spectrum** (Animated) | An 8-band analyser of the Mac's audio input, with peak hold and a beat flash on the bottom row and the scene buttons. Tap a column to punch that band. | Gain |
+| **Fire Hands** | Hold pads and flames rise from your fingers. Harder presses burn hotter. Palettes: Classic, Blue, Green, Purple. | Flame height |
+| **Harp Strings** | Each row is a string. Tap to pluck it, press down a column to strum. **Sound** plays each string's note. | Sustain |
+| **Whack-a-Light** (Games) | Hit green pads before they fade and avoid red ones. Rounds are Endless (3 lives) or 30/60 s. The scene buttons show your streak or the time left, and your score scrolls across the pads at the end. **Attract mode** plays itself until you tap. | Start speed |
+
+**Microphone and music.** Audio Spectrum listens to the current input device. macOS asks for
+microphone permission once, and nothing is recorded or sent anywhere. To visualise music playing
+*on* the Mac, install a loopback driver such as [BlackHole](https://existential.audio/blackhole/),
+send your music to it, and pick it as the input in System Settings ▸ Sound. With no input, or after
+2.5 s of silence, the effect switches to a built-in demo groove so the pads never sit dark.
+
+**Sound and MIDI** are off by default. The synth, the virtual MIDI port and the microphone open only
+while an effect that needs them is running. They close when you switch scenes, black out or quit.
+
 ## Install
 
 ```bash
@@ -127,7 +152,7 @@ from apc_light.engine.effect import ColorParam, Effect
 
 class Sparkle(Effect):
     name = "Sparkle"                  # shown in the library
-    category = "Animated"             # "Static", "Animated" or "Utility"
+    category = "Animated"             # "Static", "Animated", "Interactive", "Games" or "Utility"
     shortcut = "6"                    # optional
     params = [ColorParam("color", "Color", "#ffffff")]   # UI controls appear automatically
 
@@ -256,5 +281,14 @@ The automated tests use a simulated APC and a virtual CoreMIDI APC. These checks
 10. Unplug the APC while holding a pad, then replug it. The sweep resumes and no pad stays stuck bright.
 11. Try every preset. **PERFORMANCE** should feel tight for rhythmic tapping and **ZEN** very slow.
 12. Quit while pressing pads. The APC goes dark.
+
+### Play scenes on the hardware
+
+1. **Pong**: move faders 1 and 8. The paddles follow at once, and the score lights the scene buttons.
+2. **Light Sequencer**: tap pads to set steps, and the scene buttons step down with the playhead. Turn on **MIDI Out**, then pick
+   *Kinetic Kontroller Out* as a MIDI input in your DAW. Notes arrive in time and none hang when you switch scenes.
+3. **Audio Spectrum**: allow microphone access when asked, then clap or play music. Columns rise with the sound.
+4. **Fire Hands / Harp Strings / Fireworks / Kaleidoscope Paint**: press and hold several pads at once. Every touch reacts.
+5. **Whack-a-Light**: tap to start, play a 30 s round, and check the scene buttons count down the time.
 
 If something looks wrong, open **Inspector ▸ MIDI** (or ⌘⇧D) and use **Copy Log**.

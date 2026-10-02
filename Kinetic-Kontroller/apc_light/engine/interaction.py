@@ -9,7 +9,7 @@ from __future__ import annotations
 
 from typing import Dict, Iterable, Tuple
 
-from ..midi.input import PadEvent
+from ..midi.input import FaderEvent, PadEvent
 
 Pos = Tuple[int, int]
 
@@ -18,8 +18,15 @@ class InteractionState:
     def __init__(self) -> None:
         self.held: Dict[Pos, PadEvent] = {}
         self.presses = 0
+        # Last known fader positions 0..1 (None until a fader is moved; the
+        # APC only reports a fader when it moves).
+        self.faders = [None] * 9
 
-    def apply(self, event: PadEvent) -> None:
+    def apply(self, event) -> None:
+        if isinstance(event, FaderEvent):
+            if 0 <= event.index < 9:
+                self.faders[event.index] = event.value / 127.0
+            return
         if event.pressed:
             self.held[event.pos] = event
             self.presses += 1

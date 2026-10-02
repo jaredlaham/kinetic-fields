@@ -36,12 +36,12 @@ from .effect import Effect, RenderContext
 from .frame import Frame, Pad
 from .interaction import InteractionState
 from .registry import EffectRegistry
-from ..midi.input import PadEvent
+from ..midi.input import FaderEvent, PadEvent
 from ..midi.output import LedOutput
 
 log = logging.getLogger("apc.engine")
 
-FrameCallback = Callable[[int, List[Pad]], None]  # (sequence number, pads)
+FrameCallback = Callable[[int, List[Pad], List[int]], None]  # (sequence number, pads, scene LEDs)
 
 
 def speed_factor(slider: float) -> float:
@@ -73,6 +73,7 @@ class Engine:
         self.interaction = InteractionState()
         self.preview_hardware = True
         self.paused = False
+        self._fav_led: Optional[int] = None   # favourites indicator (when the effect doesn't own the LEDs)
         self._latency_marks: List[float] = []
         self.last_input_latency_ms: Optional[float] = None
         self.max_input_latency_ms = 0.0
@@ -246,8 +247,8 @@ class Engine:
     # input (thread-safe; called from the MIDI thread or the GUI)
     # ------------------------------------------------------------------
     def post_input(self, event) -> None:
-        """Queue a pad event for the render thread and wake it immediately."""
-        if isinstance(event, PadEvent):
+        """Queue a pad/fader event for the render thread and wake it immediately."""
+        if isinstance(event, (PadEvent, FaderEvent)):
             self._inputs.append(event)
             self._wake.set()
 
@@ -267,7 +268,7 @@ class Engine:
             ev = self._inputs.popleft()
             had = True
             self.interaction.apply(ev)
-            if ev.pressed and ev.source == "hardware" and effect is not None:
+            if isinstance(ev, PadEvent) and ev.pressed and ev.source == "hardware" and effect is not None:
                 # Only presses that something can react to count towards latency.
                 self._latency_marks.append(ev.time)
             if effect is not None:
@@ -298,8 +299,21 @@ class Engine:
         self._wake.set()
 
     def set_scene_led(self, index: Optional[int]) -> None:
+        """Favourites indicator; effects with scene_leds() take precedence."""
         with self._lock:
-            self.output.set_scene_led(index)
+            self._fav_led = index
+            self._apply_scene_leds_locked()
+
+    def _apply_scene_leds_locked(self) -> None:
+        states = None
+        if self._effect is not None:
+            try:
+                states = self._effect.scene_leds(self._ctx)
+            except Exception:
+                log.exception("scene_leds failed")
+        if states is None:
+            states = [1 if i == self._fav_led else 0 for i in range(8)]
+        self.output.set_scene_leds(states)
 
     def resync(self) -> None:
         """Resend the full frame, e.g. after the APC reconnects."""
@@ -395,6 +409,7 @@ class Engine:
             self._latency_marks.clear()
         if rendered or self._dirty:
             self.output.show(self._frame.pads)
+            self._apply_scene_leds_locked()
             if self._latency_marks:
                 done = time.monotonic()
                 lat = max(done - t for t in self._latency_marks) * 1000.0
@@ -414,7 +429,7 @@ class Engine:
             self._seq += 1
             try:
                 hw = self.preview_hardware
-                cb(self._seq, [self.output.display_pad(p, hw) for p in self._frame.pads])
+                cb(self._seq, [self.output.display_pad(p, hw) for p in self._frame.pads], self.output.scene_states)
             except Exception:
                 log.exception("frame callback failed")
 

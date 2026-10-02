@@ -24,7 +24,7 @@ from typing import Any, Dict, List, Optional, Sequence
 
 from .frame import Frame
 
-CATEGORIES = ("Static", "Animated", "Utility")
+CATEGORIES = ("Static", "Animated", "Interactive", "Games", "Utility")
 
 
 # ----------------------------------------------------------------------------
@@ -161,6 +161,7 @@ class Effect:
     accepts_touch: bool = False     # on-screen pads are clickable while this effect runs
     presets: Dict[str, Dict[str, Any]] = {}  # name -> param values (shown as a preset picker)
     hint: str = ""                  # short tip shown under the settings
+    fader_param: Optional[str] = None  # param the APC's master fader (9) controls, e.g. "bpm"
 
     def start(self, ctx: RenderContext) -> None:
         pass
@@ -185,9 +186,29 @@ class Effect:
         with ``ctx.interaction`` already updated. Return True if the effect's
         *parameters* changed (they are then saved). The default forwards
         presses to :meth:`on_pad_pressed` for simple click-to-edit effects."""
+        if hasattr(event, "value") and hasattr(event, "index"):      # FaderEvent
+            return self.on_fader(ctx, event.index, event.value / 127.0)
         if getattr(event, "pressed", False):
             return self.on_pad_pressed(ctx, event.x, event.y, event.button)
         return False
+
+    def on_fader(self, ctx: RenderContext, index: int, value: float) -> bool:
+        """A fader moved (0..1). By default the master fader (index 8) sets
+        ``fader_param`` across its range. Return True if params changed."""
+        if index != 8 or not self.fader_param:
+            return False
+        spec = next((p for p in self.params if p.key == self.fader_param), None)
+        if spec is None or spec.kind not in ("int", "float"):
+            return False
+        v = spec.minimum + (spec.maximum - spec.minimum) * value
+        ctx.params[spec.key] = spec.coerce(round(v) if spec.kind == "int" else v)
+        return True
+
+    def scene_leds(self, ctx: RenderContext):
+        """Optional: return 8 scene-button LED states (0 off, 1 on, 2 blink)
+        to use the scene buttons as a display (scores, beats). None = leave
+        them to the app (favourites indicator)."""
+        return None
 
     def on_pad_pressed(self, ctx: RenderContext, x: int, y: int, button: str) -> bool:
         """Optional: pad press. Return True if parameters changed (redraws)."""

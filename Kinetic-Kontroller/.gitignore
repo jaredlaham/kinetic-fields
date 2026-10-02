@@ -1,0 +1,7 @@
+.venv/
+build/
+dist/
+__pycache__/
+*.pyc
+.pytest_cache/
+apc_light/assets/topo_custom.svg

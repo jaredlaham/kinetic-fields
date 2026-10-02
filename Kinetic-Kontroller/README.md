@@ -79,6 +79,11 @@ cd Kinetic-Kontroller
 ./build_app.sh            # builds dist/Kinetic Kontroller.app, then offers to copy it to /Applications
 ```
 
+Building needs **Python 3.10–3.13** (3.12 recommended). The script finds one automatically. If
+your Mac only has a newer Python (such as Homebrew's 3.14, which python-rtmidi has no prebuilt
+package for yet), it offers to run `brew install python@3.12` for you, and it rebuilds a `.venv`
+left behind by an unsupported Python.
+
 Or drag `dist/Kinetic Kontroller.app` into Applications yourself. The app bundles its own
 Python and Qt. It does not need Homebrew, this virtual environment, or anything on your `$PATH`.
 

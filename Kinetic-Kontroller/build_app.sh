@@ -33,20 +33,56 @@ say() { printf '\n\033[1;33m==> %s\033[0m\n' "$*"; }
 die() { printf '\n\033[1;31mERROR: %s\033[0m\n' "$*" >&2; exit 1; }
 
 # ---------------------------------------------------------------- python ----
+# Supported: Python 3.10-3.13 (CI builds with 3.12). Newer Pythons may not have
+# prebuilt wheels for python-rtmidi yet, which forces a fragile C++ build.
+py_ok() {  # is "$1" a supported Python?
+  "$1" -c 'import sys; sys.exit(0 if (3, 10) <= sys.version_info[:2] <= (3, 13) else 1)' 2>/dev/null
+}
+
 find_python() {
   if [[ -n "${PYTHON:-}" ]]; then echo "$PYTHON"; return; fi
+  local dirs=("" /opt/homebrew/bin/ /usr/local/bin/ /Library/Frameworks/Python.framework/Versions/Current/bin/)
   for c in python3.12 python3.13 python3.11 python3.10 python3; do
-    if command -v "$c" >/dev/null 2>&1; then
-      if "$c" -c 'import sys; sys.exit(0 if sys.version_info >= (3, 9) else 1)' 2>/dev/null; then
-        command -v "$c"; return
-      fi
-    fi
+    for d in "${dirs[@]}"; do
+      local exe="$d$c"
+      if [[ -z "$d" ]]; then exe="$(command -v "$c" 2>/dev/null || true)"; fi
+      if [[ -n "$exe" && -x "$exe" ]] && py_ok "$exe"; then echo "$exe"; return; fi
+    done
   done
   return 1
 }
 
+need_python_help() {
+  cat >&2 <<'MSG'
+
+Kinetic Kontroller needs Python 3.10-3.13 to build (3.12 recommended).
+Your Mac only has a newer or older Python. Fix it with one of:
+
+  brew install python@3.12         (Homebrew)
+  https://www.python.org/downloads/release/python-31210/   (python.org installer)
+
+then run ./build_app.sh again.
+MSG
+}
+
+# A venv left behind by an unsupported Python (e.g. a failed 3.14 attempt) is rebuilt.
+if [[ -x "$VENV/bin/python" ]] && ! py_ok "$VENV/bin/python" && [[ -z "${PYTHON:-}" ]]; then
+  say "Removing $VENV (built with unsupported $("$VENV/bin/python" --version 2>&1))"
+  rm -rf "$VENV"
+fi
+
 if [[ ! -x "$VENV/bin/python" ]]; then
-  PY="$(find_python)" || die "Python 3.9+ not found. Install it (e.g. 'brew install python@3.12') and re-run."
+  if ! PY="$(find_python)"; then
+    if command -v brew >/dev/null 2>&1 && [[ -t 0 ]]; then
+      printf '\nPython 3.12 is needed to build. Install it now with Homebrew (brew install python@3.12)? [Y/n] '
+      read -r reply
+      if [[ ! "$reply" =~ ^[Nn] ]]; then
+        brew install python@3.12 || die "brew install python@3.12 failed"
+        PY="$(brew --prefix)/bin/python3.12"
+      fi
+    fi
+    [[ -n "${PY:-}" && -x "${PY:-}" ]] || { need_python_help; die "No supported Python found."; }
+  fi
   say "Creating virtual environment ($VENV) with $PY"
   "$PY" -m venv "$VENV"
 fi
@@ -55,7 +91,10 @@ VPY="$PROJECT_DIR/$VENV/bin/python"
 
 say "Installing dependencies"
 "$VPY" -m pip install --quiet --upgrade pip
-"$VPY" -m pip install --quiet -r requirements-dev.txt
+if ! "$VPY" -m pip install --quiet --only-binary=python-rtmidi,numpy,PySide6-Essentials -r requirements-dev.txt; then
+  need_python_help
+  die "Installing dependencies failed (see above). If you changed Python, delete $VENV and re-run."
+fi
 
 # ----------------------------------------------------------------- tests ----
 if [[ "$RUN_TESTS" == 1 ]]; then

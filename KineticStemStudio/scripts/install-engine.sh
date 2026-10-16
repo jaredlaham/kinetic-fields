@@ -37,7 +37,7 @@ if ! command -v uv >/dev/null 2>&1 && ! have_python && [[ $BOOTSTRAP == 1 ]]; th
 fi
 
 if command -v uv >/dev/null 2>&1; then
-  uv venv --python 3.11 "$VENV"
+  uv venv --allow-existing --python 3.11 "$VENV"
   PIP=(uv pip install --python "$VENV/bin/python")
 else
   PY=""
@@ -61,6 +61,18 @@ fi
 if [[ $HIGH == 1 ]]; then "${PIP[@]}" -r requirements-high.txt; fi
 if [[ $DEV == 1 ]]; then "${PIP[@]}" -r requirements-dev.txt; fi
 
-echo '{}' | PYTHONPATH="$PWD" "$VENV/bin/python" -m kstem doctor | tail -1
+echo "Checking the engine..."
+RESULT="$(echo '{}' | PYTHONDONTWRITEBYTECODE=1 PYTHONPATH="$PWD" "$VENV/bin/python" -m kstem doctor | tail -1)"
+echo "$RESULT"
 echo
 echo "Engine environment: $VENV"
+# Fail the install when a required check fails, naming the failing checks.
+echo "$RESULT" | "$VENV/bin/python" -c '
+import json, sys
+r = json.loads(sys.stdin.read())["data"]
+bad = [c["name"] + ": " + c["detail"] for c in r["checks"] if c["required"] and not c["ok"]]
+if bad:
+    print("Engine check FAILED:\n  " + "\n  ".join(bad), file=sys.stderr)
+    sys.exit(1)
+print("Engine check passed.")
+'

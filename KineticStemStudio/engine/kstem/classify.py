@@ -44,6 +44,8 @@ class Classification:
             "label": LABELS[self.proposed],
             "confidence": round(self.confidence, 3),
             "scores": {k: round(v, 3) for k, v in sorted(self.scores.items(), key=lambda kv: -kv[1])},
+            # The same scores as [class, score] pairs, best first (dictionary keys get renamed by some JSON decoders).
+            "ranked": [[k, round(v, 3)] for k, v in sorted(self.scores.items(), key=lambda kv: -kv[1])],
             "features": {k: round(v, 4) for k, v in self.features.items()},
         }
 

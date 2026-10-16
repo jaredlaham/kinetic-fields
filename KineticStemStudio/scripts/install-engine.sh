@@ -5,6 +5,8 @@
 #
 #   --high   also install CREPE (PyTorch, about 1 GB) for High Accuracy leads/vocals
 #   --dev    also install test/evaluation tools (pytest, mir_eval)
+#   --bootstrap-uv  install uv (https://astral.sh/uv) first when neither uv nor
+#            Python 3.10/3.11 is available; uv then fetches Python 3.11
 #   --venv   where to create the environment
 #            (default: ~/Library/Application Support/KineticStemStudio/engine-venv)
 #
@@ -13,18 +15,26 @@
 set -euo pipefail
 cd "$(dirname "$0")/../engine"
 
-HIGH=0; DEV=0
+HIGH=0; DEV=0; BOOTSTRAP=0
 VENV="${HOME}/Library/Application Support/KineticStemStudio/engine-venv"
 [[ "$(uname)" == "Darwin" ]] || VENV="${HOME}/.local/share/kinetic-stem-studio/engine-venv"
 while [[ $# -gt 0 ]]; do
   case "$1" in
     --high) HIGH=1 ;;
     --dev) DEV=1 ;;
+    --bootstrap-uv) BOOTSTRAP=1 ;;
     --venv) VENV="$2"; shift ;;
     *) echo "unknown option $1" >&2; exit 2 ;;
   esac
   shift
 done
+
+have_python() { command -v python3.11 >/dev/null 2>&1 || command -v python3.10 >/dev/null 2>&1; }
+if ! command -v uv >/dev/null 2>&1 && ! have_python && [[ $BOOTSTRAP == 1 ]]; then
+  echo "Installing uv (it fetches Python 3.11 for the engine)..."
+  curl -LsSf https://astral.sh/uv/install.sh | sh
+  export PATH="$HOME/.local/bin:$HOME/.cargo/bin:$PATH"
+fi
 
 if command -v uv >/dev/null 2>&1; then
   uv venv --python 3.11 "$VENV"
@@ -48,8 +58,8 @@ fi
 # Basic Pitch without its dependency list: that list pulls TensorFlow on some
 # platforms. The engine runs Basic Pitch's bundled ONNX model with onnxruntime.
 "${PIP[@]}" --no-deps -r requirements-nodeps.txt
-[[ $HIGH == 1 ]] && "${PIP[@]}" -r requirements-high.txt
-[[ $DEV == 1 ]] && "${PIP[@]}" -r requirements-dev.txt
+if [[ $HIGH == 1 ]]; then "${PIP[@]}" -r requirements-high.txt; fi
+if [[ $DEV == 1 ]]; then "${PIP[@]}" -r requirements-dev.txt; fi
 
 echo '{}' | PYTHONPATH="$PWD" "$VENV/bin/python" -m kstem doctor | tail -1
 echo

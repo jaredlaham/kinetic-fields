@@ -66,10 +66,8 @@ def export(stems: list[StemIn], bpm: float, meter: tuple[int, int], title: str, 
            tpq: int = 480, overwrite: bool = False) -> AbletonReport:
     title = _safe(title)
     root = Path(parent) / title
-    if root.exists():
-        if not overwrite:
-            raise FileExistsError(f"{root} already exists")
-        shutil.rmtree(root)
+    if root.exists() and not overwrite:
+        raise FileExistsError(f"{root} already exists")
     tmp = Path(parent) / f".{title}.partial"
     if tmp.exists():
         shutil.rmtree(tmp)
@@ -137,7 +135,15 @@ def export(stems: list[StemIn], bpm: float, meter: tuple[int, int], title: str, 
             rep.warnings.append(f"Live 12 Lite holds {als.LIVE_LITE_TRACKS} tracks: {len(rep.left_off)} files are in the folder but not on a track")
     (tmp / "Exports" / "manifest.json").write_text(json.dumps(manifest, indent=2) + "\n")
     (tmp / "Exports" / "READ ME.txt").write_text(_readme(title, bpm, meter, kind, manifest, rep))
+    # The old folder is removed only once the new one is complete.
+    old = Path(parent) / f".{title}.replaced"
+    if root.exists():
+        if old.exists():
+            shutil.rmtree(old)
+        os.replace(root, old)
     os.replace(tmp, root)
+    if old.exists():
+        shutil.rmtree(old)
     rep.files = sorted(str(p.relative_to(root)) for p in root.rglob("*") if p.is_file())
     return rep
 

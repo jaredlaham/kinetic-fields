@@ -103,7 +103,7 @@ def convert(drum_notes: list[dict], bass_notes: list[dict], bpm: float, grid_sta
     for n in drum_notes:
         counts["drum_hits"] += 1
         voice = dmap.get(n.get("drum") or "", None)
-        if voice is None:
+        if not voice:  # None or "" (the app sends "" for "do not map")
             counts["drum_hits_unmapped"] += 1
             unmapped_classes.add(n.get("drum") or "unknown")
             continue

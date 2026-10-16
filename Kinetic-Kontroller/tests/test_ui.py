@@ -1,0 +1,265 @@
+"""Redesigned UI: transport, browser, inspector tools — driven like a user."""
+
+import time
+from argparse import Namespace
+
+import pytest
+
+pytest.importorskip("PySide6.QtWidgets")
+from PySide6.QtWidgets import QApplication  # noqa: E402
+
+
+@pytest.fixture(scope="module")
+def qapp():
+    return QApplication.instance() or QApplication([])
+
+
+@pytest.fixture
+def ctl(qapp):
+    from apc_light.app.application import Controller
+    from apc_light.ui.diagnostics import QtLogHandler
+
+    c = Controller(Namespace(fake_midi=True, self_test=0, debug=False), QtLogHandler())
+    yield c
+    c.shutdown()
+    c.window.deleteLater()
+
+
+def settle(t=0.08):
+    end = time.time() + t
+    while time.time() < end:
+        QApplication.processEvents()
+        time.sleep(0.005)
+
+
+def test_layout_zones_and_sizes(ctl):
+    from apc_light.ui.design import H
+
+    w = ctl.window
+    w.resize(1520, 940)
+    w.show()
+    settle()
+    assert w.toolbar.height() == H.TOOLBAR
+    assert w.statusbar.height() == H.STATUS
+    assert H.BROWSER_MIN <= w.library.width() <= H.BROWSER_MAX
+    assert H.INSPECTOR_MIN <= w.inspector.width() <= H.INSPECTOR_MAX
+    assert w.inspector.blackout_btn.text() == "BLACKOUT"
+    assert "Blackout" == w.inspector.blackout_btn.objectName()   # neutral style, not red
+
+
+def test_pause_freezes_leds_and_play_resumes(ctl):
+    b = ctl.device.backend
+    ctl.start_effect("rainbow")
+    settle(0.2)
+    ctl.set_paused(True)
+    assert ctl.window.toolbar.pause.isChecked()
+    settle(0.1)
+    n = len(b.apc.messages)
+    settle(0.3)
+    assert len(b.apc.messages) == n          # frozen: no LED traffic
+    ctl.play()
+    assert not ctl.engine.paused
+    settle(0.3)
+    assert len(b.apc.messages) > n
+
+
+def test_prev_next_walk_the_browser(ctl):
+    ctl.start_effect("kinetic_sweep")
+    ctl.step_effect(1)
+    assert ctl.engine.active_id == "rainbow"      # favourites order: sweep, rainbow, ...
+    ctl.step_effect(-1)
+    assert ctl.engine.active_id == "kinetic_sweep"
+    ctl.blackout()
+    ctl.play()                                    # play restarts the selected scene
+    assert ctl.engine.active_id == "kinetic_sweep"
+
+
+def test_browser_selection_search_and_favorite(ctl):
+    lib = ctl.window.library
+    ctl.start_effect("heart")
+    assert lib.list._selected == "heart" and lib.list._active == "heart"
+    lib.search.setText("rain")
+    assert set(lib.list.visible_effects()) <= {"rainbow", "rainbow_wave", "rainbow_diagonal"}
+    lib.search.setText("")
+    ctl.toggle_favorite("all_on")
+    assert "all_on" in ctl.settings["favorites"] and lib.list.is_favorite("all_on")
+    ctl.toggle_favorite("all_on")
+    assert "all_on" not in ctl.settings["favorites"]
+
+
+def test_paint_tools_and_pattern_library(ctl, monkeypatch):
+    import apc_light.ui.browser as browser
+
+    ins = ctl.window.inspector
+    ctl.start_effect("custom_pattern")
+    ctl.pattern_action("custom_pattern", "clear")
+    ctl.set_param("custom_pattern", "brush", "#00ff00")
+    # brush
+    ctl.screen_pad(0, 0, True)
+    ctl.screen_pad(0, 0, False)
+    settle()
+    pat = ctl.engine.params_for("custom_pattern")["pattern"]
+    assert pat[0] == "#00ff00"
+    # bucket fill floods the black area
+    ins.set_paint_tool("bucket")
+    ctl.set_param("custom_pattern", "brush", "#0000ff")
+    ctl.screen_pad(5, 5, True)
+    ctl.screen_pad(5, 5, False)
+    settle()
+    pat = ctl.engine.params_for("custom_pattern")["pattern"]
+    assert pat[0] == "#00ff00" and pat.count("#0000ff") == 63
+    # eyedropper picks the green back up and returns to the brush
+    ins.set_paint_tool("eyedropper")
+    ctl.screen_pad(0, 0, True)
+    ctl.screen_pad(0, 0, False)
+    assert ctl.engine.params_for("custom_pattern")["brush"] == "#00ff00"
+    assert ins.paint_tool == "brush"
+    # eraser
+    ins.set_paint_tool("eraser")
+    ctl.screen_pad(3, 3, True)
+    ctl.screen_pad(3, 3, False)
+    settle()
+    assert ctl.engine.params_for("custom_pattern")["pattern"][27] == "#000000"
+    # save -> list -> load -> delete
+    monkeypatch.setattr(browser, "pattern_name_dialog", lambda parent, default: "Test Grid")
+    ctl.save_pattern()
+    assert "Test Grid" in ctl.settings["patterns"]
+    saved = list(ctl.settings["patterns"]["Test Grid"])
+    ctl.pattern_action("custom_pattern", "clear")
+    ctl.load_pattern("Test Grid")
+    assert ctl.engine.params_for("custom_pattern")["pattern"] == saved
+    ctl.delete_pattern("Test Grid")
+    assert "Test Grid" not in ctl.settings["patterns"]
+
+
+def test_notes_ui_state_and_shortcut_editor(ctl):
+    ctl.window.library.notes.setPlainText("Drop at 1:32 -> Kinetic Sweep")
+    assert ctl.settings["notes"].startswith("Drop at")
+    ctl.window.inspector.set_tab("MIDI")
+    ctl.window.inspector.tabs.set_current("Colors", emit=True)
+    assert ctl.settings["ui_state"]["inspector_tab"] == "Colors"
+    ctl.clear_shortcut("6")
+    assert "6" not in ctl.shortcuts()
+    ctl.assign_shortcut("7", "kinetic_marquee")
+    assert ctl.shortcuts()["7"] == "kinetic_marquee"
+    assert ctl.window.inspector._shortcut_rows["7"].combo.currentText() == "Kinetic Marquee"
+
+
+def test_preview_toggles_stay_in_sync(ctl):
+    ctl.set_hardware_preview(False)
+    assert ctl.window.workbar.view.current() == "icon:sparkle"
+    assert not ctl.window.inspector.opt_preview.isChecked()
+    ctl.set_hardware_preview(True)
+    assert ctl.window.workbar.view.current() == "icon:chip"
+    assert ctl.engine.preview_hardware
+
+
+def test_scene_buttons_and_digit_keys_still_work(ctl):
+    b = ctl.device.backend
+    b.press(0x70)                 # APC scene button 1
+    assert ctl.engine.active_id == "kinetic_sweep"
+    assert ctl.handle_key("3") and ctl.engine.active_id == "mosaic"
+    assert ctl.handle_key("0") and ctl.engine.active_id is None
+
+
+@pytest.mark.parametrize("size", [(900, 800), (620, 760), (1300, 700)])
+def test_pads_are_5_to_4_with_equal_gutters(qapp, size):
+    from PySide6.QtCore import QPointF
+
+    from apc_light.ui.apc_view import PAD_ASPECT, ApcView
+
+    v = ApcView()
+    v.resize(*size)
+    _, grid, pitch = v._geometry()
+    rects = {(x, y): v._pad_rect(x, y, grid, pitch) for x in range(8) for y in range(8)}
+    for r in rects.values():
+        assert abs(r.width() / r.height() - PAD_ASPECT) < 1e-9
+    h_gaps = {round(rects[(x + 1, y)].left() - rects[(x, y)].right(), 6) for x in range(7) for y in range(8)}
+    v_gaps = {round(rects[(x, y + 1)].top() - rects[(x, y)].bottom(), 6) for x in range(8) for y in range(7)}
+    assert len(h_gaps) == 1 and h_gaps == v_gaps and h_gaps.pop() > 0
+    # clicks land on the right pad, including in the gutters
+    for (x, y), r in rects.items():
+        assert v._hit(r.center()) == (x, y)
+    gutter_pt = QPointF(rects[(3, 3)].right() + 0.4, rects[(3, 3)].center().y())
+    assert v._hit(gutter_pt) == (3, 3)
+
+
+def test_topo_background_opacity_and_custom_svg(ctl, tmp_path):
+    view, ins = ctl.window.view, ctl.window.inspector
+    assert view._topo is not None and view._topo.isValid()        # bundled pattern
+    assert abs(view._topo_opacity - ctl.settings["topo_opacity"] / 100) < 1e-9
+    ins.topo.setValue(60)                                          # slider in Colors ▸ Workspace Background
+    assert ctl.settings["topo_opacity"] == 60 and abs(view._topo_opacity - 0.6) < 1e-9
+    ins.topo.setValue(0)
+    assert view._topo_opacity == 0
+    view.resize(800, 600)
+    assert view._render_topo() is not None
+    # custom SVG is copied into Application Support and used
+    svg = tmp_path / "mine.svg"
+    svg.write_text('<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 10 5">'
+                   '<path d="M0,2 L10,3" stroke="#fff" fill="none"/></svg>')
+    ctl.set_topo_svg(str(svg))
+    assert ctl.settings["topo_svg"].endswith("topo.svg") and ctl.topo_path() == ctl.settings["topo_svg"]
+    assert "Custom" in ins.topo_source.text()
+    # a broken SVG is reported, not crashed on
+    bad = tmp_path / "bad.svg"
+    bad.write_text("not an svg")
+    ctl.set_topo_svg(str(bad))
+    assert "Could not load" in ins.topo_source.text()
+    ctl.set_topo_svg("")
+    assert ctl.topo_path().endswith(("topo.svg", "topo_custom.svg")) and "Default" in ins.topo_source.text()
+
+
+def test_assign_scenes_to_apc_scene_buttons(ctl):
+    from PySide6.QtCore import QPointF
+
+    b, view, ins, lib = ctl.device.backend, ctl.window.view, ctl.window.inspector, ctl.window.library
+    # defaults: scene buttons hold favourites 1-6, buttons 7-8 empty
+    assert ctl.scene_slots()[:2] == ["kinetic_sweep", "rainbow"] and ctl.scene_slots()[6:] == ["", ""]
+    # assign from the inspector: Pong on button 8 -> it becomes a favourite
+    ins._scene_rows[7].combo.setCurrentText("Pong")
+    assert ctl.scene_slots()[7] == "pong" and "pong" in ctl.settings["favorites"]
+    assert lib.list.scene_button_of("pong") == 7
+    b.press(0x77)                                   # hardware scene button 8
+    assert ctl.engine.active_id == "pong"
+    # a scene lives on one button: moving Pong to button 1 replaces Kinetic Sweep and frees 8
+    ctl.assign_scene_button(0, "pong")
+    assert ctl.scene_slots()[0] == "pong" and ctl.scene_slots()[7] == ""
+    assert ins._scene_rows[0].combo.currentText() == "Pong"
+    b.press(0x77)                                   # empty button does nothing
+    assert ctl.engine.active_id == "pong"
+    # the green LED follows the assigned button
+    ctl.start_effect("pong")
+    settle(0.15)
+    assert ctl.engine.output.scene_states[0] in (1, 0, 2)   # Pong draws its own score LEDs
+    ctl.start_effect("rainbow")
+    settle(0.15)
+    assert ctl.engine.output.scene_states == [0, 1, 0, 0, 0, 0, 0, 0]
+    # on-screen scene buttons: click starts, right-click menu assigns
+    view.resize(900, 700)
+    _, grid, pitch = view._geometry()
+    centre = view._pad_rect(8, 2, grid, pitch).center()
+    assert view._scene_hit(QPointF(centre)) == 2
+    clicked = []
+    view.scene_clicked.connect(clicked.append)
+    from PySide6.QtCore import QEvent, Qt
+    from PySide6.QtGui import QMouseEvent
+    view.mousePressEvent(QMouseEvent(QEvent.MouseButtonPress, centre, centre, Qt.LeftButton, Qt.LeftButton, Qt.NoModifier))
+    assert clicked == [2] and ctl.engine.active_id == ctl.scene_slots()[2]
+    ctl.start_effect("fire_hands")
+    menu = ctl.window.scene_button_menu(6)
+    assign = next(a for a in menu.actions() if a.text().startswith("Assign"))
+    assign.trigger()
+    assert ctl.scene_slots()[6] == "fire_hands"
+    # removing a favourite frees its button; adding one fills the first free button
+    ctl.toggle_favorite("fire_hands")
+    assert "fire_hands" not in ctl.scene_slots()
+    ctl.toggle_favorite("fireworks")
+    assert ctl.scene_slots().index("fireworks") == 6
+    clear = next(a for a in ctl.window.scene_button_menu(6).actions() if a.text() == "Clear Button")
+    clear.trigger()
+    assert ctl.scene_slots()[6] == "" and "fireworks" in ctl.settings["favorites"]
+    # persisted
+    ctl.settings.save()
+    from apc_light.settings.store import Settings
+    assert Settings(ctl.settings.path)["scene_slots"] == ctl.scene_slots()

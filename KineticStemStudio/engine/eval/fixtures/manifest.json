@@ -1,0 +1,59 @@
+{
+  "mono_bass": {
+    "class": "bass_guitar",
+    "bpm": 104.0,
+    "renderer": "FluidSynth + FluidR3_GM.sf2",
+    "notes": 52,
+    "seconds": 21.78
+  },
+  "analog_lead": {
+    "class": "mono_synth",
+    "bpm": 118.0,
+    "renderer": "FluidSynth + FluidR3_GM.sf2",
+    "notes": 44,
+    "seconds": 35.85
+  },
+  "poly_piano": {
+    "class": "piano",
+    "bpm": 92.0,
+    "renderer": "FluidSynth + FluidR3_GM.sf2",
+    "notes": 72,
+    "seconds": 24.91
+  },
+  "arp_synth": {
+    "class": "poly_synth",
+    "bpm": 128.0,
+    "renderer": "FluidSynth + FluidR3_GM.sf2",
+    "notes": 128,
+    "seconds": 18.16
+  },
+  "four_floor": {
+    "class": "drums",
+    "bpm": 124.0,
+    "renderer": "FluidSynth + FluidR3_GM.sf2",
+    "notes": 96,
+    "seconds": 21.5
+  },
+  "breakbeat": {
+    "class": "drums",
+    "bpm": 132.0,
+    "renderer": "FluidSynth + FluidR3_GM.sf2",
+    "notes": 132,
+    "seconds": 18.8
+  },
+  "acid_bassline": {
+    "class": "synth_bass",
+    "bpm": 135.0,
+    "renderer": "built-in TB-303 style synth",
+    "notes": 96,
+    "seconds": 16.06
+  },
+  "reverb_melody": {
+    "class": "other_melodic",
+    "bpm": 84.0,
+    "reverb": 2.8,
+    "renderer": "FluidSynth + FluidR3_GM.sf2",
+    "notes": 34,
+    "seconds": 37.8
+  }
+}

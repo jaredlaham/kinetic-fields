@@ -1,0 +1,8 @@
+.build/
+build/
+*.xcodeproj/
+.swiftpm/
+__pycache__/
+*.pyc
+.pytest_cache/
+engine/eval/results/

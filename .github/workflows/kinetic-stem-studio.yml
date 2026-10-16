@@ -1,0 +1,86 @@
+name: Kinetic Stem Studio
+
+on:
+  push:
+    paths:
+      - "KineticStemStudio/**"
+      - ".github/workflows/kinetic-stem-studio.yml"
+  pull_request:
+    paths:
+      - "KineticStemStudio/**"
+      - ".github/workflows/kinetic-stem-studio.yml"
+  workflow_dispatch:
+
+concurrency:
+  group: kinetic-stem-studio-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  app:
+    name: macOS app (build, test, package)
+    runs-on: macos-15
+    defaults:
+      run:
+        shell: bash
+        working-directory: KineticStemStudio
+    steps:
+      - uses: actions/checkout@v4
+      - name: Toolchain
+        run: swift --version && xcodebuild -version
+      - name: Build (StemCore and the SwiftUI app)
+        run: swift build
+      - name: Test
+        run: swift test
+      - name: Package .app
+        run: |
+          ./scripts/build-app.sh
+          ditto -c -k --sequesterRsrc --keepParent "build/Kinetic Stem Studio.app" "build/Kinetic-Stem-Studio.zip"
+      - name: Upload app
+        uses: actions/upload-artifact@v4
+        with:
+          name: Kinetic-Stem-Studio-app
+          path: KineticStemStudio/build/Kinetic-Stem-Studio.zip
+          if-no-files-found: error
+
+  engine:
+    name: Engine on Apple Silicon (install, tests, accuracy)
+    runs-on: macos-15
+    timeout-minutes: 60
+    defaults:
+      run:
+        shell: bash
+        working-directory: KineticStemStudio
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Install engine (same script the app runs)
+        run: ./scripts/install-engine.sh --dev --venv "$RUNNER_TEMP/engine-venv"
+      - name: Engine tests
+        working-directory: KineticStemStudio/engine
+        run: PYTHONPATH=. "$RUNNER_TEMP/engine-venv/bin/python" -m pytest -q tests
+      - name: Accuracy on the 8 reference stems
+        working-directory: KineticStemStudio/engine
+        run: |
+          PYTHONPATH=. "$RUNNER_TEMP/engine-venv/bin/python" eval/run_eval.py --out "$RUNNER_TEMP/eval"
+          ls "$RUNNER_TEMP/eval"
+      - name: Upload accuracy results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: engine-accuracy
+          path: ${{ runner.temp }}/eval
+          if-no-files-found: warn
+
+  core-linux:
+    name: StemCore on Linux
+    runs-on: ubuntu-24.04
+    container: swift:6.0-noble
+    defaults:
+      run:
+        working-directory: KineticStemStudio
+    steps:
+      - uses: actions/checkout@v4
+      - run: swift build
+      - run: swift test

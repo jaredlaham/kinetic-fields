@@ -1,0 +1,670 @@
+{
+  "mono_bass": {
+    "class": "bass_guitar",
+    "renderer": "FluidSynth + FluidR3_GM.sf2",
+    "true_bpm": 104.0,
+    "estimated_bpm": 103.93,
+    "bpm_error": -0.07,
+    "modes": {
+      "fast": {
+        "precision": 0.9583333333333334,
+        "recall": 0.8846153846153846,
+        "f1": 0.9199999999999999,
+        "f1_offset": 0.4,
+        "onset_f1": 0.9199999999999999,
+        "pitch_acc": 1.0,
+        "onset_mae_ms": 11.924200979851346,
+        "offset_mae_ms": 74.35427612347989,
+        "ref_notes": 52,
+        "est_notes": 48,
+        "seconds": 1.12,
+        "engine": "YIN pitch track / fast"
+      },
+      "balanced": {
+        "precision": 1.0,
+        "recall": 1.0,
+        "f1": 1.0,
+        "f1_offset": 0.5192307692307693,
+        "onset_f1": 1.0,
+        "pitch_acc": 1.0,
+        "onset_mae_ms": 17.187502214056455,
+        "offset_mae_ms": 63.186397954029694,
+        "ref_notes": 52,
+        "est_notes": 52,
+        "seconds": 0.83,
+        "engine": "Basic Pitch, one voice / balanced"
+      },
+      "high": {
+        "precision": 1.0,
+        "recall": 1.0,
+        "f1": 1.0,
+        "f1_offset": 0.5192307692307693,
+        "onset_f1": 1.0,
+        "pitch_acc": 1.0,
+        "onset_mae_ms": 17.187502214056455,
+        "offset_mae_ms": 63.186397954029694,
+        "ref_notes": 52,
+        "est_notes": 52,
+        "seconds": 11.36,
+        "engine": "Basic Pitch + pYIN fusion / high"
+      }
+    }
+  },
+  "analog_lead": {
+    "class": "mono_synth",
+    "renderer": "FluidSynth + FluidR3_GM.sf2",
+    "true_bpm": 118.0,
+    "estimated_bpm": 118.0,
+    "bpm_error": -0.0,
+    "modes": {
+      "fast": {
+        "precision": 0.75,
+        "recall": 0.75,
+        "f1": 0.75,
+        "f1_offset": 0.7045454545454546,
+        "onset_f1": 0.7727272727272727,
+        "pitch_acc": 0.9705882352941176,
+        "onset_mae_ms": 19.082956503813435,
+        "offset_mae_ms": 11.018442774687998,
+        "ref_notes": 44,
+        "est_notes": 44,
+        "seconds": 1.26,
+        "engine": "YIN pitch track / fast"
+      },
+      "balanced": {
+        "precision": 1.0,
+        "recall": 1.0,
+        "f1": 1.0,
+        "f1_offset": 0.9772727272727273,
+        "onset_f1": 1.0,
+        "pitch_acc": 1.0,
+        "onset_mae_ms": 10.90650010307126,
+        "offset_mae_ms": 19.081340136054337,
+        "ref_notes": 44,
+        "est_notes": 44,
+        "seconds": 0.81,
+        "engine": "Basic Pitch, one voice / balanced"
+      },
+      "high": {
+        "precision": 1.0,
+        "recall": 1.0,
+        "f1": 1.0,
+        "f1_offset": 0.9772727272727273,
+        "onset_f1": 1.0,
+        "pitch_acc": 1.0,
+        "onset_mae_ms": 10.90650010307126,
+        "offset_mae_ms": 19.081340136054337,
+        "ref_notes": 44,
+        "est_notes": 44,
+        "seconds": 35.48,
+        "engine": "Basic Pitch + pYIN fusion / high"
+      }
+    }
+  },
+  "poly_piano": {
+    "class": "piano",
+    "renderer": "FluidSynth + FluidR3_GM.sf2",
+    "true_bpm": 92.0,
+    "estimated_bpm": 92.0,
+    "bpm_error": -0.0,
+    "modes": {
+      "fast": {
+        "precision": 0.7157894736842105,
+        "recall": 0.9444444444444444,
+        "f1": 0.81437125748503,
+        "f1_offset": 0.467065868263473,
+        "onset_f1": 0.8502994011976047,
+        "pitch_acc": 0.323943661971831,
+        "onset_mae_ms": 8.35371782561518,
+        "offset_mae_ms": 144.1186984642342,
+        "ref_notes": 72,
+        "est_notes": 95,
+        "seconds": 0.59,
+        "engine": "Basic Pitch (ICASSP 2022, ONNX) / fast"
+      },
+      "balanced": {
+        "precision": 0.8607594936708861,
+        "recall": 0.9444444444444444,
+        "f1": 0.9006622516556292,
+        "f1_offset": 0.7019867549668874,
+        "onset_f1": 0.913907284768212,
+        "pitch_acc": 0.42028985507246375,
+        "onset_mae_ms": 4.924122223131643,
+        "offset_mae_ms": 79.56537455163738,
+        "ref_notes": 72,
+        "est_notes": 79,
+        "seconds": 0.67,
+        "engine": "Basic Pitch (ICASSP 2022, ONNX) / balanced"
+      },
+      "high": {
+        "precision": 0.8292682926829268,
+        "recall": 0.9444444444444444,
+        "f1": 0.883116883116883,
+        "f1_offset": 0.6883116883116882,
+        "onset_f1": 0.8961038961038961,
+        "pitch_acc": 0.391304347826087,
+        "onset_mae_ms": 4.924122223131643,
+        "offset_mae_ms": 79.56537455163738,
+        "ref_notes": 72,
+        "est_notes": 82,
+        "seconds": 0.77,
+        "engine": "Basic Pitch (ICASSP 2022, ONNX) / high"
+      }
+    }
+  },
+  "arp_synth": {
+    "class": "poly_synth",
+    "renderer": "FluidSynth + FluidR3_GM.sf2",
+    "true_bpm": 128.0,
+    "estimated_bpm": 127.99,
+    "bpm_error": -0.01,
+    "modes": {
+      "fast": {
+        "precision": 0.8571428571428571,
+        "recall": 0.890625,
+        "f1": 0.8735632183908045,
+        "f1_offset": 0.01532567049808429,
+        "onset_f1": 0.8812260536398469,
+        "pitch_acc": 0.9478260869565217,
+        "onset_mae_ms": 5.874592453354878,
+        "offset_mae_ms": 93.79036391465468,
+        "ref_notes": 128,
+        "est_notes": 133,
+        "seconds": 0.41,
+        "engine": "Basic Pitch (ICASSP 2022, ONNX) / fast"
+      },
+      "balanced": {
+        "precision": 0.8984375,
+        "recall": 0.8984375,
+        "f1": 0.8984375,
+        "f1_offset": 0.03125,
+        "onset_f1": 0.8984375,
+        "pitch_acc": 0.9304347826086956,
+        "onset_mae_ms": 8.29235778369237,
+        "offset_mae_ms": 93.84628171510734,
+        "ref_notes": 128,
+        "est_notes": 128,
+        "seconds": 0.52,
+        "engine": "Basic Pitch (ICASSP 2022, ONNX) / balanced"
+      },
+      "high": {
+        "precision": 0.8846153846153846,
+        "recall": 0.8984375,
+        "f1": 0.8914728682170543,
+        "f1_offset": 0.031007751937984496,
+        "onset_f1": 0.8992248062015504,
+        "pitch_acc": 0.9224137931034483,
+        "onset_mae_ms": 8.29235778369237,
+        "offset_mae_ms": 93.84628171510734,
+        "ref_notes": 128,
+        "est_notes": 130,
+        "seconds": 0.56,
+        "engine": "Basic Pitch (ICASSP 2022, ONNX) / high"
+      }
+    }
+  },
+  "four_floor": {
+    "class": "drums",
+    "renderer": "FluidSynth + FluidR3_GM.sf2",
+    "true_bpm": 124.0,
+    "estimated_bpm": 124.01,
+    "bpm_error": 0.01,
+    "modes": {
+      "fast": {
+        "precision": 0.5213675213675214,
+        "recall": 0.6354166666666666,
+        "f1": 0.5727699530516432,
+        "class_accuracy": 0.7176470588235294,
+        "onset_mae_ms": 15.89236314525788,
+        "per_class": {
+          "clap": {
+            "precision": 0.0,
+            "recall": 0.0,
+            "f1": 0.0,
+            "ref": 16,
+            "est": 0
+          },
+          "closed_hat": {
+            "precision": 0.5,
+            "recall": 0.78125,
+            "f1": 0.6097560975609756,
+            "ref": 32,
+            "est": 50
+          },
+          "kick": {
+            "precision": 0.8,
+            "recall": 1.0,
+            "f1": 0.888888888888889,
+            "ref": 32,
+            "est": 40
+          },
+          "open_hat": {
+            "precision": 0.0,
+            "recall": 0.0,
+            "f1": 0.0,
+            "ref": 8,
+            "est": 0
+          },
+          "snare": {
+            "precision": 0.14814814814814814,
+            "recall": 0.5,
+            "f1": 0.22857142857142856,
+            "ref": 8,
+            "est": 27
+          }
+        },
+        "ref_notes": 96,
+        "est_notes": 117,
+        "seconds": 0.29,
+        "engine": "Band onset detector"
+      },
+      "balanced": {
+        "precision": 0.8857142857142857,
+        "recall": 0.96875,
+        "f1": 0.9253731343283582,
+        "class_accuracy": 0.968421052631579,
+        "onset_mae_ms": 2.9138109559618455,
+        "per_class": {
+          "clap": {
+            "precision": 1.0,
+            "recall": 1.0,
+            "f1": 1.0,
+            "ref": 16,
+            "est": 16
+          },
+          "closed_hat": {
+            "precision": 0.9411764705882353,
+            "recall": 1.0,
+            "f1": 0.9696969696969697,
+            "ref": 32,
+            "est": 34
+          },
+          "kick": {
+            "precision": 0.96875,
+            "recall": 0.96875,
+            "f1": 0.96875,
+            "ref": 32,
+            "est": 32
+          },
+          "open_hat": {
+            "precision": 1.0,
+            "recall": 1.0,
+            "f1": 1.0,
+            "ref": 8,
+            "est": 8
+          },
+          "snare": {
+            "precision": 0.4,
+            "recall": 0.75,
+            "f1": 0.5217391304347827,
+            "ref": 8,
+            "est": 15
+          }
+        },
+        "ref_notes": 96,
+        "est_notes": 105,
+        "seconds": 0.33,
+        "engine": "Onsets + learned hit classifier"
+      },
+      "high": {
+        "precision": 0.8857142857142857,
+        "recall": 0.96875,
+        "f1": 0.9253731343283582,
+        "class_accuracy": 0.968421052631579,
+        "onset_mae_ms": 2.9138109559618455,
+        "per_class": {
+          "clap": {
+            "precision": 1.0,
+            "recall": 1.0,
+            "f1": 1.0,
+            "ref": 16,
+            "est": 16
+          },
+          "closed_hat": {
+            "precision": 0.9411764705882353,
+            "recall": 1.0,
+            "f1": 0.9696969696969697,
+            "ref": 32,
+            "est": 34
+          },
+          "kick": {
+            "precision": 0.96875,
+            "recall": 0.96875,
+            "f1": 0.96875,
+            "ref": 32,
+            "est": 32
+          },
+          "open_hat": {
+            "precision": 1.0,
+            "recall": 1.0,
+            "f1": 1.0,
+            "ref": 8,
+            "est": 8
+          },
+          "snare": {
+            "precision": 0.4,
+            "recall": 0.75,
+            "f1": 0.5217391304347827,
+            "ref": 8,
+            "est": 15
+          }
+        },
+        "ref_notes": 96,
+        "est_notes": 105,
+        "seconds": 0.36,
+        "engine": "Onsets + learned hit classifier + masked-hit search"
+      }
+    }
+  },
+  "breakbeat": {
+    "class": "drums",
+    "renderer": "FluidSynth + FluidR3_GM.sf2",
+    "true_bpm": 132.0,
+    "estimated_bpm": 131.98,
+    "bpm_error": -0.02,
+    "modes": {
+      "fast": {
+        "precision": 0.6791044776119403,
+        "recall": 0.6893939393939394,
+        "f1": 0.6842105263157895,
+        "class_accuracy": 0.6476190476190476,
+        "onset_mae_ms": 13.922544315359342,
+        "per_class": {
+          "closed_hat": {
+            "precision": 1.0,
+            "recall": 0.703125,
+            "f1": 0.8256880733944955,
+            "ref": 64,
+            "est": 45
+          },
+          "crash": {
+            "precision": 0.0,
+            "recall": 0.0,
+            "f1": 0.0,
+            "ref": 2,
+            "est": 0
+          },
+          "high_tom": {
+            "precision": 0.0,
+            "recall": 0.0,
+            "f1": 0.0,
+            "ref": 2,
+            "est": 0
+          },
+          "kick": {
+            "precision": 0.5531914893617021,
+            "recall": 0.9285714285714286,
+            "f1": 0.6933333333333335,
+            "ref": 28,
+            "est": 47
+          },
+          "low_tom": {
+            "precision": 0.0,
+            "recall": 0.0,
+            "f1": 0.0,
+            "ref": 2,
+            "est": 0
+          },
+          "rim": {
+            "precision": 0.0,
+            "recall": 0.0,
+            "f1": 0.0,
+            "ref": 2,
+            "est": 0
+          },
+          "snare": {
+            "precision": 0.47619047619047616,
+            "recall": 0.625,
+            "f1": 0.5405405405405405,
+            "ref": 32,
+            "est": 42
+          }
+        },
+        "ref_notes": 132,
+        "est_notes": 134,
+        "seconds": 0.11,
+        "engine": "Band onset detector"
+      },
+      "balanced": {
+        "precision": 0.9015151515151515,
+        "recall": 0.9015151515151515,
+        "f1": 0.9015151515151515,
+        "class_accuracy": 0.85,
+        "onset_mae_ms": 4.215356391723597,
+        "per_class": {
+          "clap": {
+            "precision": 0.0,
+            "recall": 0.0,
+            "f1": 0.0,
+            "ref": 0,
+            "est": 1
+          },
+          "closed_hat": {
+            "precision": 1.0,
+            "recall": 0.875,
+            "f1": 0.9333333333333333,
+            "ref": 64,
+            "est": 56
+          },
+          "crash": {
+            "precision": 1.0,
+            "recall": 1.0,
+            "f1": 1.0,
+            "ref": 2,
+            "est": 2
+          },
+          "high_tom": {
+            "precision": 0.5,
+            "recall": 0.5,
+            "f1": 0.5,
+            "ref": 2,
+            "est": 2
+          },
+          "kick": {
+            "precision": 0.8235294117647058,
+            "recall": 1.0,
+            "f1": 0.9032258064516129,
+            "ref": 28,
+            "est": 34
+          },
+          "low_tom": {
+            "precision": 1.0,
+            "recall": 1.0,
+            "f1": 1.0,
+            "ref": 2,
+            "est": 2
+          },
+          "rim": {
+            "precision": 1.0,
+            "recall": 1.0,
+            "f1": 1.0,
+            "ref": 2,
+            "est": 2
+          },
+          "snare": {
+            "precision": 0.8484848484848485,
+            "recall": 0.875,
+            "f1": 0.8615384615384615,
+            "ref": 32,
+            "est": 33
+          }
+        },
+        "ref_notes": 132,
+        "est_notes": 132,
+        "seconds": 0.2,
+        "engine": "Onsets + learned hit classifier"
+      },
+      "high": {
+        "precision": 0.9015151515151515,
+        "recall": 0.9015151515151515,
+        "f1": 0.9015151515151515,
+        "class_accuracy": 0.85,
+        "onset_mae_ms": 4.215356391723597,
+        "per_class": {
+          "clap": {
+            "precision": 0.0,
+            "recall": 0.0,
+            "f1": 0.0,
+            "ref": 0,
+            "est": 1
+          },
+          "closed_hat": {
+            "precision": 1.0,
+            "recall": 0.875,
+            "f1": 0.9333333333333333,
+            "ref": 64,
+            "est": 56
+          },
+          "crash": {
+            "precision": 1.0,
+            "recall": 1.0,
+            "f1": 1.0,
+            "ref": 2,
+            "est": 2
+          },
+          "high_tom": {
+            "precision": 0.5,
+            "recall": 0.5,
+            "f1": 0.5,
+            "ref": 2,
+            "est": 2
+          },
+          "kick": {
+            "precision": 0.8235294117647058,
+            "recall": 1.0,
+            "f1": 0.9032258064516129,
+            "ref": 28,
+            "est": 34
+          },
+          "low_tom": {
+            "precision": 1.0,
+            "recall": 1.0,
+            "f1": 1.0,
+            "ref": 2,
+            "est": 2
+          },
+          "rim": {
+            "precision": 1.0,
+            "recall": 1.0,
+            "f1": 1.0,
+            "ref": 2,
+            "est": 2
+          },
+          "snare": {
+            "precision": 0.8484848484848485,
+            "recall": 0.875,
+            "f1": 0.8615384615384615,
+            "ref": 32,
+            "est": 33
+          }
+        },
+        "ref_notes": 132,
+        "est_notes": 132,
+        "seconds": 0.34,
+        "engine": "Onsets + learned hit classifier + masked-hit search"
+      }
+    }
+  },
+  "acid_bassline": {
+    "class": "synth_bass",
+    "renderer": "built-in TB-303 style synth",
+    "true_bpm": 135.0,
+    "estimated_bpm": 134.94,
+    "bpm_error": -0.06,
+    "modes": {
+      "fast": {
+        "precision": 0.935064935064935,
+        "recall": 0.75,
+        "f1": 0.8323699421965318,
+        "f1_offset": 0.45086705202312133,
+        "onset_f1": 0.8901734104046243,
+        "pitch_acc": 0.935064935064935,
+        "onset_mae_ms": 21.085511463845705,
+        "offset_mae_ms": 42.46834716553227,
+        "ref_notes": 96,
+        "est_notes": 77,
+        "seconds": 0.3,
+        "engine": "YIN pitch track / fast"
+      },
+      "balanced": {
+        "precision": 0.8625,
+        "recall": 0.71875,
+        "f1": 0.7840909090909092,
+        "f1_offset": 0.4090909090909091,
+        "onset_f1": 0.8636363636363635,
+        "pitch_acc": 0.9078947368421053,
+        "onset_mae_ms": 3.259620526471555,
+        "offset_mae_ms": 44.71596507936493,
+        "ref_notes": 96,
+        "est_notes": 80,
+        "seconds": 0.47,
+        "engine": "Basic Pitch, one voice / balanced"
+      },
+      "high": {
+        "precision": 0.8571428571428571,
+        "recall": 0.6875,
+        "f1": 0.7630057803468208,
+        "f1_offset": 0.4161849710982659,
+        "onset_f1": 0.8786127167630057,
+        "pitch_acc": 0.868421052631579,
+        "onset_mae_ms": 2.288603827389603,
+        "offset_mae_ms": 43.97889319727844,
+        "ref_notes": 96,
+        "est_notes": 77,
+        "seconds": 9.63,
+        "engine": "Basic Pitch + pYIN fusion / high"
+      }
+    }
+  },
+  "reverb_melody": {
+    "class": "other_melodic",
+    "renderer": "FluidSynth + FluidR3_GM.sf2",
+    "true_bpm": 84.0,
+    "estimated_bpm": 83.95,
+    "bpm_error": -0.045,
+    "modes": {
+      "fast": {
+        "precision": 0.39215686274509803,
+        "recall": 0.5882352941176471,
+        "f1": 0.47058823529411764,
+        "f1_offset": 0.2823529411764706,
+        "onset_f1": 0.588235294117647,
+        "pitch_acc": 0.8,
+        "onset_mae_ms": 17.697644557822947,
+        "offset_mae_ms": 75.8765158730159,
+        "ref_notes": 34,
+        "est_notes": 51,
+        "seconds": 1.12,
+        "engine": "YIN pitch track / fast"
+      },
+      "balanced": {
+        "precision": 0.7297297297297297,
+        "recall": 0.7941176470588235,
+        "f1": 0.7605633802816901,
+        "f1_offset": 0.5915492957746479,
+        "onset_f1": 0.7887323943661971,
+        "pitch_acc": 0.9642857142857143,
+        "onset_mae_ms": 13.645068447132225,
+        "offset_mae_ms": 79.58207142857177,
+        "ref_notes": 34,
+        "est_notes": 37,
+        "seconds": 0.89,
+        "engine": "Basic Pitch, one voice / balanced"
+      },
+      "high": {
+        "precision": 0.7,
+        "recall": 0.8235294117647058,
+        "f1": 0.7567567567567567,
+        "f1_offset": 0.5675675675675677,
+        "onset_f1": 0.7837837837837837,
+        "pitch_acc": 0.9655172413793104,
+        "onset_mae_ms": 13.239469144801033,
+        "offset_mae_ms": 81.36884013605439,
+        "ref_notes": 34,
+        "est_notes": 40,
+        "seconds": 39.83,
+        "engine": "Basic Pitch + pYIN fusion / high"
+      }
+    }
+  }
+}

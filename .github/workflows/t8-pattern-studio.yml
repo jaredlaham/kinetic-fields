@@ -26,12 +26,15 @@ jobs:
       - name: Test
         run: swift test
       - name: Package .app
-        run: ./scripts/build-app.sh
+        run: |
+          ./scripts/build-app.sh
+          # ditto keeps the .app bundle, its permissions and signature intact.
+          ditto -c -k --sequesterRsrc --keepParent "build/T-8 Pattern Studio.app" "build/T-8-Pattern-Studio.zip"
       - name: Upload app
         uses: actions/upload-artifact@v4
         with:
           name: T-8-Pattern-Studio-app
-          path: T8PatternStudio/build/T-8 Pattern Studio.app
+          path: T8PatternStudio/build/T-8-Pattern-Studio.zip
           if-no-files-found: error
 
   linux-core:

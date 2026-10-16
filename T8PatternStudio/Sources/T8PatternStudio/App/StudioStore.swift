@@ -1,4 +1,5 @@
 import AppKit
+import CoreMIDI
 import Foundation
 import Observation
 import T8Core

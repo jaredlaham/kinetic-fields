@@ -15,13 +15,14 @@ jobs:
     runs-on: macos-15
     defaults:
       run:
+        shell: bash
         working-directory: T8PatternStudio
     steps:
       - uses: actions/checkout@v4
       - name: Toolchain
         run: swift --version && xcodebuild -version
       - name: Build (core, CLI and SwiftUI app)
-        run: swift build 2>&1 | tee build.log
+        run: swift build
       - name: Test
         run: swift test
       - name: Package .app

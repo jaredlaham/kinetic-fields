@@ -1,0 +1,6 @@
+.build/
+.swiftpm/
+*.xcodeproj/xcuserdata/
+DerivedData/
+build/
+Tests/T8CoreTests/Fixtures/real-backup/

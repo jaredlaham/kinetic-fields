@@ -94,6 +94,18 @@ Add your Anthropic API key under **Settings (⌘,) ▸ AI**. The key is stored i
 - The response is parsed with the same notation parser as the factory library and checked by `ValidationEngine`. Raw model output never reaches the sequencer. If validation fails, the app retries once and sends Claude the exact error.
 - Without a key, everything else works, including offline genre blending.
 
+### Beat from Audio (song → pattern)
+**From Audio** in the toolbar, **File ▸ Beat from Audio File…** (⇧⌘A), or the AI tab.
+
+1. Choose a WAV, AIFF, MP3 or unprotected M4A/AAC. Apple Music and streaming DRM files can't be read.
+2. Pick the section to analyse on the waveform (by default it starts 20% in, to skip intros), how much to analyse (15/30/60 s), and the pattern length. **24 steps = 1½ bars of 4/4.**
+3. **Analyse** runs on your Mac, nothing is uploaded. It estimates tempo, kick/snare/hat onsets on a 16th grid (averaged over several 2-bar repetitions), and a bass line with its key.
+4. **Preview** it, then either **Use This Pattern** or **Refine with Claude**.
+
+How Claude fits in: the Claude API does not accept audio, so **Claude never hears the song**. It receives the analysis as text (per-step onset strengths, detected bass pitches, tempo, key, and the draft pattern) and builds a clean, musical T-8 pattern from it. You can add a direction such as "keep it sparse" or "add acid slides".
+
+Accuracy: tempo is reliable. Kick and snare placement is good on clear electronic beats. Hats are partial, and the bass line is approximate, because pitched kicks such as 808s can read as bass notes. Treat the result as a draft. Songs usually repeat every 1 or 2 bars, so a 24-step loop takes the first 24 steps of the song's 2-bar groove. `t8studio analyze-audio song.wav --steps 24` runs the same analysis from the command line on WAV files.
+
 ### Genre Blend
 Choose a primary and a secondary genre and a percentage. The app learns step-probability templates, tempo, swing, bass register and slide/accent rates from the factory presets of each genre, interpolates them, and generates a single groove. It does not stack two patterns. This works **offline**, or with Claude using the blend as guidance.
 

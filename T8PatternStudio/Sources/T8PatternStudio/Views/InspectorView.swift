@@ -189,6 +189,13 @@ struct AIPanel: View {
             }
             .controlSize(.small)
 
+            Button {
+                store.activeSheet = .audioToBeat
+            } label: {
+                Label("Create from an Audio File…", systemImage: "waveform")
+            }
+            .controlSize(.small)
+
             SectionHeader(title: "Quick Edits")
             LazyVGrid(columns: [GridItem(.flexible()), GridItem(.flexible())], spacing: 6) {
                 ForEach(AIRequestKind.quickEdits, id: \.self) { instruction in

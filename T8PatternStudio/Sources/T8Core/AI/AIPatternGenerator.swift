@@ -145,6 +145,8 @@ public enum AIRequestKind: Hashable, Sendable {
     case blend(GenreBlend, prompt: String)
     case surprise
     case variation(VariationSlot)
+    /// Turn an audio analysis (text summary from `AudioBeatAnalyzer`) into a clean pattern.
+    case fromAudio(analysis: String, steps: Int, direction: String)
 
     public static let quickEdits: [String] = [
         "Make it more aggressive", "Add syncopation", "Add a drum fill", "Simplify the groove",
@@ -313,6 +315,17 @@ public struct AIPatternGenerator: Sendable {
             parts.append("Surprise me: create an unexpected but musical pattern\(context.genre.map { " rooted in \($0.displayName)" } ?? "").")
         case .variation(let slot):
             parts.append("Create variation \(slot.letter) (\(slot.title)) of the current pattern.")
+        case .fromAudio(let analysis, let steps, let direction):
+            parts.append("""
+            Build a \(steps)-step 4/4 T-8 pattern (length must be exactly \(steps)) from this analysis of a recording the user uploaded. \
+            You cannot hear the audio; the numbers below come from onset and pitch detection, so treat them as noisy evidence. \
+            Keep hits where the evidence is strong and consistent with a coherent groove, drop isolated weak detections, \
+            keep the detected tempo, and keep the bass in the detected key unless the pitches clearly say otherwise. \
+            Capture the feel of the groove rather than copying every detection.
+
+            \(analysis)
+            """)
+            if !direction.isEmpty { parts.append("Additional direction from the user: \(direction)") }
         }
         if let genre = context.genre { parts.append("Selected genre: \(genre.displayName).") }
         if let current = context.current {

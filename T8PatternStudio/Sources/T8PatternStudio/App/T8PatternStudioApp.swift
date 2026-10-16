@@ -78,6 +78,7 @@ struct StudioCommands: Commands {
             Button("Export Current Preset…") { if let id = store.currentPresetID { store.exportPresets([id]) } }
             Divider()
             Button("Import MIDI File…") { store.activeSheet = .midiImport }.keyboardShortcut("i", modifiers: [.command, .shift])
+            Button("Beat from Audio File…") { store.activeSheet = .audioToBeat }.keyboardShortcut("a", modifiers: [.command, .shift])
             Button("Export MIDI File…") { store.exportMIDI() }.keyboardShortcut("e", modifiers: [.command, .shift])
             Button("Export A/B/C/D as MIDI…") { store.exportAllVariationsMIDI() }
         }

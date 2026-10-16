@@ -25,6 +25,7 @@ enum ActiveSheet: Identifiable {
     case midiImport
     case transfer
     case capabilities
+    case audioToBeat
 
     var id: String {
         switch self {
@@ -34,6 +35,7 @@ enum ActiveSheet: Identifiable {
         case .midiImport: "midiImport"
         case .transfer: "transfer"
         case .capabilities: "capabilities"
+        case .audioToBeat: "audioToBeat"
         }
     }
 }
@@ -337,6 +339,18 @@ final class StudioStore {
         start(pattern: preset.main) // the working pattern is untouched
     }
 
+    static let audioPreviewID = PresetID("preview.audio")
+
+    /// Previews an arbitrary pattern (e.g. a beat extracted from audio) without loading it.
+    func previewPattern(_ candidate: Pattern) {
+        if previewingPresetID == Self.audioPreviewID && isPlaying {
+            stop()
+            return
+        }
+        previewingPresetID = Self.audioPreviewID
+        start(pattern: candidate)
+    }
+
     /// Loads a preset, asking first if there are unsaved changes.
     func requestLoad(_ preset: Preset, mode: LoadMode = .full) {
         guardUnsaved(title: "Load “\(preset.name)”?") { [weak self] in self?.load(preset, mode: mode) }
@@ -553,7 +567,10 @@ final class StudioStore {
         let generator = AIPatternGenerator(apiKey: key, model: aiModel)
         let genre = currentPreset?.primaryGenre
         let references = genre.map { FactoryLibrary.presets(for: $0) } ?? []
-        let context = AIContext(current: pattern, genre: genre, referencePresets: references)
+        let fromAudio: Bool
+        if case .fromAudio = kind { fromAudio = true } else { fromAudio = false }
+        // A beat from audio is built from the analysis alone, not from the pattern on screen.
+        let context = AIContext(current: fromAudio ? nil : pattern, genre: fromAudio ? nil : genre, referencePresets: fromAudio ? [] : references)
         aiBusy = true
         aiLastExplanation = nil
         Task {
@@ -576,7 +593,7 @@ final class StudioStore {
             updated[slot] = result.pattern
             replaceVariations(updated)
             activeSlot = slot
-        case .create, .blend, .surprise:
+        case .create, .blend, .surprise, .fromAudio:
             let derived = PatternVariationEngine.makeVariations(from: result.pattern, genre: nil, seed: UInt64(Date().timeIntervalSince1970))
             replaceVariations(derived)
             currentPresetID = nil

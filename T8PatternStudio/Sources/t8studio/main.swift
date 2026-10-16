@@ -19,6 +19,8 @@ usage: t8studio <command> [arguments]
                                      Stage a RESTORE set (see README before using)
   verify <post-restore-dir> <transfer-dir>
                                      Compare a post-restore backup with a staged transfer
+  analyze-audio <file.wav> [--steps 24] [--start sec] [--bpm n] [--sensitivity 0-1]
+                                     Extract a drum + bass pattern from a recording
   matrix                             Print the hardware compatibility matrix
 """
 
@@ -142,6 +144,22 @@ do {
         for m in report.missingFiles { print("missing: \(m)") }
         print(report.passed ? "VERIFIED: the T-8 holds exactly the staged data." : "NOT VERIFIED")
         exit(report.passed ? 0 : 2)
+    case "analyze-audio":
+        guard let path = args.first else { fail(usage) }
+        func flag(_ name: String) -> Double? {
+            guard let i = args.firstIndex(of: name), i + 1 < args.count else { return nil }
+            return Double(args[i + 1])
+        }
+        var options = AudioBeatAnalyzer.Options()
+        if let steps = flag("--steps") { options.steps = Int(steps) }
+        options.startSeconds = flag("--start")
+        options.bpmOverride = flag("--bpm")
+        if let s = flag("--sensitivity") { options.sensitivity = s }
+        let (samples, rate) = try WAVReader.read(Data(contentsOf: URL(fileURLWithPath: path)))
+        let result = try AudioBeatAnalyzer.analyze(samples: samples, sampleRate: rate, options: options)
+        print(describe(result.pattern))
+        print(String(format: "tempo confidence %.0f%%, grid starts at %.2fs, %d repetitions", result.tempoConfidence * 100, result.gridStartSeconds, result.repetitionsAnalysed))
+        for w in result.warnings { print("note: \(w)") }
     case "matrix":
         for entry in HardwareCapabilities.matrix {
             print("[\(entry.level.label)] \(entry.feature)\n    source: \(entry.source)\(entry.notes.isEmpty ? "" : "\n    note: \(entry.notes)")")

@@ -31,6 +31,7 @@ struct ContentView: View {
             case .midiImport: MIDIImportSheet()
             case .transfer: TransferWizardView()
             case .capabilities: CapabilityMatrixView()
+            case .audioToBeat: AudioToBeatSheet()
             }
         }
         .alert(item: $store.pendingAction) { action in
@@ -139,10 +140,15 @@ struct TransportBar: View {
                 Button("Export Preset File…") { if let id = store.currentPresetID { store.exportPresets([id]) } }
                     .disabled(store.currentPresetID == nil)
                 Button("Import MIDI File…") { store.activeSheet = .midiImport }
+                Button("Beat from Audio File…") { store.activeSheet = .audioToBeat }
             } label: {
                 Label("Export", systemImage: "square.and.arrow.up")
             }
             .fixedSize()
+            Button { store.activeSheet = .audioToBeat } label: {
+                Label("From Audio", systemImage: "waveform")
+            }
+            .help("Analyse a song and turn its beat into a pattern (⇧⌘A)")
             Button { store.activeSheet = .transfer } label: {
                 Label("Transfer to T-8", systemImage: "arrow.down.to.line.compact")
             }

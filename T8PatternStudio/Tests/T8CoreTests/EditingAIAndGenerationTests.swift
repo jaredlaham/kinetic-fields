@@ -189,6 +189,28 @@ final class AITests: XCTestCase {
         do { _ = try await refusal.generate(.surprise, context: AIContext()); XCTFail() } catch { XCTAssertEqual(error as? AIError, .refused("nope")) }
     }
 
+    func testFromAudioRequestCarriesAnalysisAndLength() async throws {
+        let payload24 = Self.goodPayload
+            .replacingOccurrences(of: "\"length\":16", with: "\"length\":24")
+            .replacingOccurrences(of: "x... x... x... x...", with: "x... x... x... x... x... x...")
+            .replacingOccurrences(of: "................", with: "........................")
+            .replacingOccurrences(of: ".... X... .... X...", with: ".... X... .... X... .... X...")
+            .replacingOccurrences(of: "x.x. x.x. x.x. x.x.", with: "x.x. x.x. x.x. x.x. x.x. x.x.")
+            .replacingOccurrences(of: "a... a... a... a...", with: "a... a... a... a... a... a...")
+            .replacingOccurrences(of: "D1! . D2~ D1 . . F1 . D1 . . A1 . C2 . D1", with: "D1! . D2~ D1 . . F1 . D1 . . A1 . C2 . D1 D1 . . . F1 . . .")
+        let transport = MockTransport([(200, Self.messageBody(payload24))])
+        let analysis = "Detected tempo: 128 BPM. Kick: 9000900090009000"
+        let result = try await AIPatternGenerator(apiKey: "k", transport: transport)
+            .generate(.fromAudio(analysis: analysis, steps: 24, direction: "keep it sparse"), context: AIContext())
+        XCTAssertEqual(result.pattern.length, 24)
+        let body = try JSONSerialization.jsonObject(with: transport.requests[0].httpBody!) as! [String: Any]
+        let message = ((body["messages"] as! [[String: Any]])[0]["content"] as! String)
+        XCTAssertTrue(message.contains("24-step 4/4"))
+        XCTAssertTrue(message.contains(analysis))
+        XCTAssertTrue(message.contains("keep it sparse"))
+        XCTAssertTrue(message.contains("cannot hear the audio"))
+    }
+
     func testPayloadRoundTripsFactoryPresets() throws {
         for preset in FactoryLibrary.presets {
             let payload = AIPatternPayload(from: preset.main)

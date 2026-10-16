@@ -160,13 +160,20 @@ struct NoteEditorView: View {
                 .frame(height: velocityHeight)
             }
             .background(ScrollWheelCatcher { e in
-                if rows.isDrums || e.modifierFlags.contains(.option) || e.modifierFlags.contains(.command) { return false }
-                if abs(e.scrollingDeltaY) > abs(e.scrollingDeltaX) && !e.modifierFlags.contains(.shift) {
+                if e.modifierFlags.contains(.option) || e.modifierFlags.contains(.command) {
+                    model.zoom(by: pow(1.01, Double(e.scrollingDeltaY)), around: model.playhead)
+                    return true
+                }
+                let vertical = abs(e.scrollingDeltaY) > abs(e.scrollingDeltaX) && !e.modifierFlags.contains(.shift)
+                if vertical && !rows.isDrums {
                     let step = e.hasPreciseScrollingDeltas ? e.scrollingDeltaY / 12 : e.scrollingDeltaY
                     topPitch = max(12, min(127, topPitch + Int(step.rounded())))
                     return true
                 }
-                return false
+                let dx = Double(e.scrollingDeltaX) + (e.modifierFlags.contains(.shift) ? Double(e.scrollingDeltaY) : 0)
+                guard abs(dx) > 0.01 else { return false }
+                model.scroll(seconds: -dx / model.pixelsPerSecond * (e.hasPreciseScrollingDeltas ? 1 : 8))
+                return true
             })
         }
     }

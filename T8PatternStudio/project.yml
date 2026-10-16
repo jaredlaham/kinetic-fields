@@ -1,0 +1,56 @@
+# XcodeGen spec: `brew install xcodegen && xcodegen generate` creates
+# T8PatternStudio.xcodeproj with a native macOS app target that uses the
+# T8Core library from this package. (You can also open Package.swift directly.)
+name: T8PatternStudio
+options:
+  bundleIdPrefix: com.t8patternstudio
+  deploymentTarget:
+    macOS: "14.0"
+packages:
+  T8PatternStudioPackage:
+    path: .
+settings:
+  base:
+    SWIFT_VERSION: "6.0"
+    MACOSX_DEPLOYMENT_TARGET: "14.0"
+targets:
+  T8PatternStudio:
+    type: application
+    platform: macOS
+    sources:
+      - path: Sources/T8PatternStudio
+        excludes:
+          - Info.plist
+    info:
+      path: Sources/T8PatternStudio/Info.plist
+    dependencies:
+      - package: T8PatternStudioPackage
+        product: T8Core
+      - sdk: CoreMIDI.framework
+      - sdk: AVFoundation.framework
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.t8patternstudio.app
+        PRODUCT_NAME: "T-8 Pattern Studio"
+        CODE_SIGN_IDENTITY: "-"
+        ENABLE_HARDENED_RUNTIME: NO
+  T8CoreTests:
+    type: bundle.unit-test
+    platform: macOS
+    sources:
+      - path: Tests/T8CoreTests
+        excludes:
+          - Fixtures
+      - path: Tests/T8CoreTests/Fixtures
+        type: folder
+    dependencies:
+      - package: T8PatternStudioPackage
+        product: T8Core
+schemes:
+  T8PatternStudio:
+    build:
+      targets:
+        T8PatternStudio: all
+    test:
+      targets:
+        - T8CoreTests

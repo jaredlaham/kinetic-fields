@@ -1,0 +1,45 @@
+name: T-8 Pattern Studio
+
+on:
+  push:
+    paths:
+      - "T8PatternStudio/**"
+      - ".github/workflows/t8-pattern-studio.yml"
+  pull_request:
+    paths:
+      - "T8PatternStudio/**"
+  workflow_dispatch:
+
+jobs:
+  macos:
+    runs-on: macos-15
+    defaults:
+      run:
+        working-directory: T8PatternStudio
+    steps:
+      - uses: actions/checkout@v4
+      - name: Toolchain
+        run: swift --version && xcodebuild -version
+      - name: Build (core, CLI and SwiftUI app)
+        run: swift build 2>&1 | tee build.log
+      - name: Test
+        run: swift test
+      - name: Package .app
+        run: ./scripts/build-app.sh
+      - name: Upload app
+        uses: actions/upload-artifact@v4
+        with:
+          name: T-8-Pattern-Studio-app
+          path: T8PatternStudio/build/T-8 Pattern Studio.app
+          if-no-files-found: error
+
+  linux-core:
+    runs-on: ubuntu-24.04
+    container: swift:6.0-noble
+    defaults:
+      run:
+        working-directory: T8PatternStudio
+    steps:
+      - uses: actions/checkout@v4
+      - run: swift build
+      - run: swift test

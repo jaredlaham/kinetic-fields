@@ -145,14 +145,14 @@ struct RulerView: View {
             let t1 = t0 + Double(size.width) / pps
             ctx.fill(Path(CGRect(origin: .zero, size: size)), with: .color(Theme.panel))
             if let r = region {
-                let x0 = (r.lowerBound - t0) * pps, x1 = (r.upperBound - t0) * pps
+                let x0 = CGFloat((r.lowerBound - t0) * pps), x1 = CGFloat((r.upperBound - t0) * pps)
                 ctx.fill(Path(CGRect(x: x0, y: 0, width: x1 - x0, height: size.height)), with: .color(Theme.selection.opacity(0.35)))
             }
             if tempo.source != .none {
                 let barPx = tempo.secondsPerBar * pps
                 let labelEvery = max(1, Int(ceil(44 / max(barPx, 1))))
                 for line in tempo.gridLines(from: t0, to: t1) {
-                    let x = (line.time - t0) * pps
+                    let x = CGFloat((line.time - t0) * pps)
                     if line.isBar {
                         ctx.stroke(Path { p in p.move(to: CGPoint(x: x, y: 12)); p.addLine(to: CGPoint(x: x, y: size.height)) },
                                    with: .color(Theme.textDim), lineWidth: 1)
@@ -170,7 +170,7 @@ struct RulerView: View {
                 let step = niceStep(seconds: 80 / pps)
                 var t = floor(t0 / step) * step
                 while t <= t1 {
-                    let x = (t - t0) * pps
+                    let x = CGFloat((t - t0) * pps)
                     ctx.stroke(Path { p in p.move(to: CGPoint(x: x, y: 14)); p.addLine(to: CGPoint(x: x, y: size.height)) },
                                with: .color(Theme.textDim), lineWidth: 1)
                     ctx.draw(Text(TimeFormat.clock(t)).font(Theme.small).foregroundColor(Theme.textDim),
@@ -178,7 +178,7 @@ struct RulerView: View {
                     t += step
                 }
             }
-            let px = (playhead - t0) * pps
+            let px = CGFloat((playhead - t0) * pps)
             ctx.fill(Path { p in
                 p.move(to: CGPoint(x: px - 5, y: size.height - 8))
                 p.addLine(to: CGPoint(x: px + 5, y: size.height - 8))
@@ -230,13 +230,13 @@ struct LaneView: View {
 
             if tempo.source != .none && tempo.secondsPerBeat * pps > 4 {
                 for line in tempo.gridLines(from: t0, to: t1) {
-                    let x = (line.time - t0) * pps
+                    let x = CGFloat((line.time - t0) * pps)
                     ctx.stroke(Path { p in p.move(to: CGPoint(x: x, y: 0)); p.addLine(to: CGPoint(x: x, y: size.height)) },
                                with: .color(line.isBar ? Theme.gridBar : Theme.gridBeat), lineWidth: 1)
                 }
             }
             if let r = region {
-                let x0 = (r.lowerBound - t0) * pps, x1 = (r.upperBound - t0) * pps
+                let x0 = CGFloat((r.lowerBound - t0) * pps), x1 = CGFloat((r.upperBound - t0) * pps)
                 ctx.fill(Path(CGRect(x: x0, y: 0, width: x1 - x0, height: size.height)), with: .color(Theme.selection.opacity(0.12)))
             }
 
@@ -253,7 +253,7 @@ struct LaneView: View {
                     let (lo, hi) = peaks.range(t, t + spp, secondsPerPixel: spp)
                     let y0 = mid - CGFloat(hi) * gain * (mid - 4)
                     let y1 = mid - CGFloat(lo) * gain * (mid - 4)
-                    path.addRect(CGRect(x: x, y: max(2, y0), width: 1, height: max(1, min(size.height - 2, y1) - max(2, y0))))
+                    path.addRect(CGRect(x: CGFloat(x), y: max(2, y0), width: 1, height: max(1, min(size.height - 2, y1) - max(2, y0))))
                     x += 1
                 }
                 ctx.fill(path, with: .color(color.opacity(audible ? 0.55 : 0.18)))
@@ -270,8 +270,8 @@ struct LaneView: View {
                 let range = CGFloat(max(hi - lo, 12))
                 let h = max(2, (size.height - 8) / range)
                 for n in notes {
-                    let x = (n.start - t0) * pps
-                    let w = max(2, n.duration * pps)
+                    let x = CGFloat((n.start - t0) * pps)
+                    let w = CGFloat(max(2, n.duration * pps))
                     let y = 4 + (CGFloat(hi - n.pitch) / range) * (size.height - 8) - h / 2
                     let rejected = n.accepted == false
                     let low = n.accepted == nil && n.confidence < stem.confidenceThreshold
@@ -281,7 +281,7 @@ struct LaneView: View {
                 }
             }
 
-            let px = (playhead - t0) * pps
+            let px = CGFloat((playhead - t0) * pps)
             ctx.stroke(Path { p in p.move(to: CGPoint(x: px, y: 0)); p.addLine(to: CGPoint(x: px, y: size.height)) },
                        with: .color(Theme.playhead), lineWidth: 1.5)
         }

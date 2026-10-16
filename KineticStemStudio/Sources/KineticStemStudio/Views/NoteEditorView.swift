@@ -243,13 +243,13 @@ struct NoteEditorView: View {
             // Beat grid (and subdivisions when zoomed in).
             if tempo.source != .none {
                 for line in tempo.gridLines(from: t0, to: t1) {
-                    let x = (line.time - t0) * pps
+                    let x = CGFloat((line.time - t0) * pps)
                     ctx.stroke(Path { p in p.move(to: CGPoint(x: x, y: 0)); p.addLine(to: CGPoint(x: x, y: size.height)) },
                                with: .color(line.isBar ? Theme.gridBar : Theme.gridBeat), lineWidth: 1)
                 }
             }
             if let r = region {
-                let x0 = (r.lowerBound - t0) * pps, x1 = (r.upperBound - t0) * pps
+                let x0 = CGFloat((r.lowerBound - t0) * pps), x1 = CGFloat((r.upperBound - t0) * pps)
                 ctx.fill(Path(CGRect(x: x0, y: 0, width: x1 - x0, height: size.height)), with: .color(Theme.selection.opacity(0.08)))
             }
             // Notes.
@@ -258,7 +258,7 @@ struct NoteEditorView: View {
                 let r = rows.row(of: shown)
                 let y = rows.y(ofRow: r)
                 guard y > -rows.rowHeight, y < size.height else { continue }
-                let x = (shown.start - t0) * pps
+                let x = CGFloat((shown.start - t0) * pps)
                 let w: CGFloat = rows.isDrums ? max(6, min(14, CGFloat(shown.duration * pps))) : max(3, CGFloat(shown.duration * pps))
                 let rect = CGRect(x: x, y: y + 1, width: w, height: rows.rowHeight - 2)
                 let isSel = selected.contains(n.id)
@@ -283,7 +283,7 @@ struct NoteEditorView: View {
                 if !n.bends.isEmpty && !rows.isDrums {
                     var path = Path()
                     for (k, b) in n.bends.enumerated() where b.count == 2 {
-                        let px = (shown.start + b[0] - t0) * pps
+                        let px = CGFloat((shown.start + b[0] - t0) * pps)
                         let py = y + rows.rowHeight / 2 - CGFloat(b[1]) * rows.rowHeight
                         if k == 0 { path.move(to: CGPoint(x: px, y: py)) } else { path.addLine(to: CGPoint(x: px, y: py)) }
                     }
@@ -301,7 +301,7 @@ struct NoteEditorView: View {
                 ctx.fill(Path(rect), with: .color(Theme.selection.opacity(0.12)))
                 ctx.stroke(Path(rect), with: .color(Theme.selection), lineWidth: 1)
             }
-            let px = (playhead - t0) * pps
+            let px = CGFloat((playhead - t0) * pps)
             ctx.stroke(Path { p in p.move(to: CGPoint(x: px, y: 0)); p.addLine(to: CGPoint(x: px, y: size.height)) },
                        with: .color(Theme.playhead), lineWidth: 1.5)
         }
@@ -391,7 +391,7 @@ struct NoteEditorView: View {
                 let pps = model.pixelsPerSecond, t0 = model.viewStart
                 let inside = stem.notes.filter { n in
                     let y = rows.y(ofRow: rows.row(of: n))
-                    let r = CGRect(x: (n.start - t0) * pps, y: y, width: max(4, n.duration * pps), height: rows.rowHeight)
+                    let r = CGRect(x: CGFloat((n.start - t0) * pps), y: y, width: CGFloat(max(4, n.duration * pps)), height: rows.rowHeight)
                     return r.intersects(rect)
                 }.map(\.id)
                 model.selectedNoteIDs = d.additive ? model.selectedNoteIDs.union(inside) : Set(inside)
@@ -480,7 +480,7 @@ struct NoteEditorView: View {
             ctx.fill(Path(CGRect(origin: .zero, size: size)), with: .color(Theme.background))
             let t1 = t0 + Double(size.width) / pps
             for n in notes where n.start >= t0 - 1 && n.start <= t1 {
-                let x = (n.start - t0) * pps
+                let x = CGFloat((n.start - t0) * pps)
                 let vel = preview.flatMap { $0.ids.contains(n.id) ? $0.velocity : nil } ?? n.velocity
                 let h = CGFloat(vel) / 127 * (size.height - 6)
                 let c = selected.contains(n.id) ? Theme.selection : color.opacity(n.accepted == false ? 0.25 : 0.8)

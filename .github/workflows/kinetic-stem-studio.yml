@@ -55,8 +55,10 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: "3.11"
-      - name: Install engine (same script the app runs)
-        run: ./scripts/install-engine.sh --dev --venv "$RUNNER_TEMP/engine-venv"
+      - name: Install engine (same script and options the app uses; fails if the self-check fails)
+        run: ./scripts/install-engine.sh --venv "$RUNNER_TEMP/engine-venv"
+      - name: Install test tools
+        run: "$RUNNER_TEMP/engine-venv/bin/python" -m pip install -r engine/requirements-dev.txt || uv pip install --python "$RUNNER_TEMP/engine-venv/bin/python" -r engine/requirements-dev.txt
       - name: Engine tests
         working-directory: KineticStemStudio/engine
         run: PYTHONPATH=. "$RUNNER_TEMP/engine-venv/bin/python" -m pytest -q tests

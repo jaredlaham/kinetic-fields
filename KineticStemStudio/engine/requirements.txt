@@ -10,5 +10,9 @@ pretty_midi>=0.2.10
 onnxruntime>=1.17
 # Basic Pitch is installed without its dependencies (scripts/install-engine.sh)
 # so TensorFlow / CoreML tools are not pulled in; ONNX Runtime runs the model.
-resampy>=0.4.2
 setuptools<70
+# Basic Pitch's own runtime dependencies (it is installed with --no-deps, see
+# requirements-nodeps.txt): it imports mir_eval at load time and declares
+# resampy<0.4.3.
+mir_eval==0.8.2
+resampy==0.4.2
